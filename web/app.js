@@ -4,14 +4,15 @@ const API_BASE = '/api';
 // State
 let currentUserId = null;
 let currentProjectId = null;
+let currentProject = null;
 let users = [];
 let projects = [];
+let currentView = 'dashboard'; // dashboard, projects, tasks
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadUsers();
     loadProjects();
-    loadStats();
     
     // Set up forms
     document.getElementById('userForm').addEventListener('submit', handleUserSubmit);
@@ -30,10 +31,14 @@ document.addEventListener('DOMContentLoaded', () => {
         currentUserId = parseInt(savedUserId);
     }
     
+    // Show dashboard by default
+    showDashboard();
+    
     // Refresh data every 30 seconds
     setInterval(() => {
-        loadStats();
-        if (currentProjectId) {
+        if (currentView === 'dashboard') {
+            loadProjects();
+        } else if (currentView === 'tasks' && currentProjectId) {
             loadTasks(currentProjectId);
         }
     }, 30000);
@@ -55,7 +60,8 @@ async function apiCall(endpoint, method = 'GET', data = null) {
     const response = await fetch(`${API_BASE}${endpoint}`, options);
     
     if (!response.ok) {
-        throw new Error(`API call failed: ${response.statusText}`);
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `API call failed: ${response.statusText}`);
     }
     
     if (method === 'DELETE') {
@@ -63,6 +69,35 @@ async function apiCall(endpoint, method = 'GET', data = null) {
     }
     
     return await response.json();
+}
+
+// View Navigation
+function showDashboard() {
+    currentView = 'dashboard';
+    document.getElementById('dashboardView').style.display = 'block';
+    document.getElementById('projectsPage').style.display = 'none';
+    document.getElementById('tasksView').style.display = 'none';
+    
+    document.getElementById('dashboardBtn').classList.add('active');
+    document.getElementById('projectsBtn').classList.remove('active');
+    
+    loadProjects();
+}
+
+function showProjectsPage() {
+    currentView = 'projects';
+    document.getElementById('dashboardView').style.display = 'none';
+    document.getElementById('projectsPage').style.display = 'block';
+    document.getElementById('tasksView').style.display = 'none';
+    
+    document.getElementById('dashboardBtn').classList.remove('active');
+    document.getElementById('projectsBtn').classList.add('active');
+    
+    loadProjects();
+}
+
+function backToProjects() {
+    showProjectsPage();
 }
 
 // Users
@@ -76,31 +111,48 @@ async function loadUsers() {
 }
 
 function updateUserSelects() {
-    const selects = [
-        document.getElementById('currentUser'),
-        document.getElementById('taskAssignee')
-    ];
+    const currentUserSelect = document.getElementById('currentUser');
+    const currentValue = currentUserSelect.value;
     
-    selects.forEach(select => {
-        const currentValue = select.value;
-        select.innerHTML = '<option value="">Select User</option>';
-        
-        users.forEach(user => {
-            const option = document.createElement('option');
-            option.value = user.id;
-            option.textContent = user.display_name;
-            select.appendChild(option);
-        });
-        
-        if (currentValue) {
-            select.value = currentValue;
-        }
+    currentUserSelect.innerHTML = '<option value="">Select User</option>';
+    
+    users.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user.id;
+        option.textContent = user.display_name;
+        currentUserSelect.appendChild(option);
     });
+    
+    if (currentValue) {
+        currentUserSelect.value = currentValue;
+    }
     
     // Restore current user
     if (currentUserId) {
-        document.getElementById('currentUser').value = currentUserId;
+        currentUserSelect.value = currentUserId;
     }
+    
+    // Update assignee checkboxes
+    updateAssigneeCheckboxes();
+}
+
+function updateAssigneeCheckboxes() {
+    const container = document.getElementById('assigneeCheckboxes');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    users.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'checkbox-item';
+        div.innerHTML = `
+            <input type="checkbox" id="assignee_${user.id}" value="${user.id}">
+            <label for="assignee_${user.id}" style="color: ${user.color}">
+                ${escapeHtml(user.display_name)}
+            </label>
+        `;
+        container.appendChild(div);
+    });
 }
 
 async function handleUserSubmit(e) {
@@ -123,19 +175,79 @@ async function handleUserSubmit(e) {
     }
 }
 
+async function deleteUser(userId) {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    
+    try {
+        await apiCall(`/users/${userId}`, 'DELETE');
+        loadUsers();
+        showNotification('User deleted', 'success');
+    } catch (error) {
+        showNotification(error.message || 'Failed to delete user', 'error');
+    }
+}
+
 // Projects
 async function loadProjects() {
     try {
         projects = await apiCall('/projects');
-        displayProjects();
-        loadStats();
+        
+        if (currentView === 'dashboard') {
+            displayDashboard();
+        } else if (currentView === 'projects') {
+            displayAllProjects();
+        }
     } catch (error) {
         console.error('Failed to load projects:', error);
     }
 }
 
-function displayProjects() {
-    const container = document.getElementById('projectsList');
+function displayDashboard() {
+    const activeProjects = projects.filter(p => p.status === 'active');
+    const onHoldProjects = projects.filter(p => p.status === 'on_hold');
+    const completedProjects = projects.filter(p => p.status === 'completed');
+    
+    // Update stats
+    document.getElementById('activeProjects').textContent = activeProjects.length;
+    document.getElementById('onHoldProjects').textContent = onHoldProjects.length;
+    document.getElementById('completedProjects').textContent = completedProjects.length;
+    
+    const totalTasks = projects.reduce((sum, p) => sum + p.task_count, 0);
+    document.getElementById('totalTasks').textContent = totalTasks;
+    
+    // Display projects by status
+    displayProjectColumn('activeProjectsList', activeProjects);
+    displayProjectColumn('onHoldProjectsList', onHoldProjects);
+    displayProjectColumn('completedProjectsList', completedProjects);
+}
+
+function displayProjectColumn(elementId, projectsList) {
+    const container = document.getElementById(elementId);
+    
+    if (projectsList.length === 0) {
+        container.innerHTML = '<p style="color: #7f8c8d; padding: 10px;">No projects</p>';
+        return;
+    }
+    
+    container.innerHTML = projectsList.map(project => `
+        <div class="project-card status-${project.status}" onclick="selectProject(${project.id})" style="margin-bottom: 10px;">
+            <h3>${escapeHtml(project.name)}</h3>
+            <div class="task-count">
+                📋 ${project.task_count} tasks
+                ${project.task_stats ? `
+                    <br><small>
+                        ✅ ${project.task_stats.done} | 
+                        ⚡ ${project.task_stats.in_progress} | 
+                        🔄 ${project.task_stats.ongoing}
+                    </small>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayAllProjects() {
+    const container = document.getElementById('allProjectsList');
     
     if (projects.length === 0) {
         container.innerHTML = '<p style="color: #7f8c8d;">No projects yet. Create one to get started!</p>';
@@ -143,10 +255,21 @@ function displayProjects() {
     }
     
     container.innerHTML = projects.map(project => `
-        <div class="project-card" onclick="selectProject(${project.id})">
+        <div class="project-card status-${project.status}" onclick="selectProject(${project.id})">
+            <div class="project-status-badge">${formatProjectStatus(project.status)}</div>
             <h3>${escapeHtml(project.name)}</h3>
             <p>${escapeHtml(project.description || 'No description')}</p>
-            <div class="task-count">📋 ${project.task_count} tasks</div>
+            <div class="task-count">
+                📋 ${project.task_count} tasks
+                ${project.task_stats ? `
+                    <br><small>
+                        ✅ ${project.task_stats.done} | 
+                        ⚡ ${project.task_stats.in_progress} | 
+                        🔄 ${project.task_stats.ongoing} | 
+                        🚀 ${project.task_stats.starting}
+                    </small>
+                ` : ''}
+            </div>
         </div>
     `).join('');
 }
@@ -162,6 +285,7 @@ async function handleProjectSubmit(e) {
     const data = {
         name: document.getElementById('projectName').value,
         description: document.getElementById('projectDescription').value,
+        status: document.getElementById('projectStatus').value,
         created_by: currentUserId
     };
     
@@ -178,13 +302,63 @@ async function handleProjectSubmit(e) {
 
 function selectProject(projectId) {
     currentProjectId = projectId;
-    const project = projects.find(p => p.id === projectId);
+    currentProject = projects.find(p => p.id === projectId);
+    currentView = 'tasks';
     
-    document.getElementById('projectTitle').textContent = project.name;
-    document.getElementById('projectsList').parentElement.style.display = 'none';
+    document.getElementById('projectTitle').textContent = currentProject.name;
+    document.getElementById('dashboardView').style.display = 'none';
+    document.getElementById('projectsPage').style.display = 'none';
     document.getElementById('tasksView').style.display = 'block';
     
+    document.getElementById('dashboardBtn').classList.remove('active');
+    document.getElementById('projectsBtn').classList.remove('active');
+    
+    // Show project status
+    const statusBadges = document.getElementById('projectStatusBadges');
+    statusBadges.innerHTML = `
+        <span class="status-badge status-${currentProject.status}">
+            ${formatProjectStatus(currentProject.status)}
+        </span>
+    `;
+    
     loadTasks(projectId);
+}
+
+function showProjectStatusModal() {
+    showModal('projectStatusModal');
+}
+
+async function changeProjectStatus(newStatus) {
+    if (!currentProjectId) return;
+    
+    try {
+        await apiCall(`/projects/${currentProjectId}`, 'PUT', { status: newStatus });
+        closeModal('projectStatusModal');
+        
+        // Reload current project
+        currentProject = await apiCall(`/projects/${currentProjectId}`);
+        
+        // Update status badge
+        const statusBadges = document.getElementById('projectStatusBadges');
+        statusBadges.innerHTML = `
+            <span class="status-badge status-${currentProject.status}">
+                ${formatProjectStatus(currentProject.status)}
+            </span>
+        `;
+        
+        showNotification('Project status updated!', 'success');
+    } catch (error) {
+        showNotification('Failed to update project status', 'error');
+    }
+}
+
+function formatProjectStatus(status) {
+    const statusMap = {
+        'active': '🚀 Active',
+        'on_hold': '⏸️ On Hold',
+        'completed': '✅ Completed'
+    };
+    return statusMap[status] || status;
 }
 
 // Tasks
@@ -192,9 +366,24 @@ async function loadTasks(projectId) {
     try {
         const tasks = await apiCall(`/projects/${projectId}/tasks`);
         displayTasks(tasks);
+        updateProjectTaskStats(tasks);
     } catch (error) {
         console.error('Failed to load tasks:', error);
     }
+}
+
+function updateProjectTaskStats(tasks) {
+    const stats = {
+        starting: tasks.filter(t => t.status === 'starting').length,
+        in_progress: tasks.filter(t => t.status === 'in_progress').length,
+        ongoing: tasks.filter(t => t.status === 'ongoing').length,
+        done: tasks.filter(t => t.status === 'done').length
+    };
+    
+    document.getElementById('projectStartingTasks').textContent = stats.starting;
+    document.getElementById('projectInProgressTasks').textContent = stats.in_progress;
+    document.getElementById('projectOngoingTasks').textContent = stats.ongoing;
+    document.getElementById('projectDoneTasks').textContent = stats.done;
 }
 
 function displayTasks(tasks) {
@@ -220,6 +409,28 @@ function displayTasks(tasks) {
             timeInfo += `<span>✅ Done: ${formatDate(task.completed_at)}</span>`;
         }
         
+        // Display assignees
+        let assigneesHtml = '';
+        if (task.assignees && task.assignees.length > 0) {
+            assigneesHtml = '<div class="task-assignees">';
+            task.assignees.forEach(assignee => {
+                assigneesHtml += `
+                    <span class="task-assignee" style="background: ${assignee.color}">
+                        👤 ${escapeHtml(assignee.username)}
+                    </span>
+                `;
+            });
+            assigneesHtml += '</div>';
+        } else if (task.assignee_name) {
+            assigneesHtml = `
+                <span class="task-assignee" style="background: ${task.assignee_color}">
+                    👤 ${escapeHtml(task.assignee_name)}
+                </span>
+            `;
+        } else {
+            assigneesHtml = '<span style="color: #95a5a6">Unassigned</span>';
+        }
+        
         return `
         <div class="task-card status-${task.status}" onclick="showTaskDetail(${task.id})">
             <div class="task-info">
@@ -228,11 +439,7 @@ function displayTasks(tasks) {
                     <span class="priority-badge priority-${task.priority}">
                         ${task.priority.toUpperCase()}
                     </span>
-                    ${task.assignee_name ? `
-                        <span class="task-assignee" style="background: ${task.assignee_color}">
-                            👤 ${escapeHtml(task.assignee_name)}
-                        </span>
-                    ` : '<span style="color: #95a5a6">Unassigned</span>'}
+                    ${assigneesHtml}
                     <span>💬 ${task.note_count} notes</span>
                     <span>📷 ${task.image_count} images</span>
                 </div>
@@ -253,6 +460,7 @@ async function showTaskDetail(taskId) {
         const task = await apiCall(`/tasks/${taskId}`);
         const notes = await apiCall(`/tasks/${taskId}/notes`);
         const images = await apiCall(`/tasks/${taskId}/images`);
+        const assignments = await apiCall(`/tasks/${taskId}/assignments`);
         
         // Calculate time information
         let timeSection = '<div class="time-tracking">';
@@ -286,6 +494,38 @@ async function showTaskDetail(taskId) {
         }
         timeSection += '</div>';
         
+        // Assignees section
+        let assigneesSection = '<div class="assignees-section">';
+        assigneesSection += '<h4>👥 Assigned To</h4>';
+        assigneesSection += '<div class="assignees-list">';
+        if (assignments.length > 0) {
+            assignments.forEach(assignment => {
+                assigneesSection += `
+                    <div class="assignee-chip" style="background: ${assignment.user_color}">
+                        ${escapeHtml(assignment.username)}
+                        <button onclick="removeAssignee(${assignment.id}, ${taskId})">×</button>
+                    </div>
+                `;
+            });
+        } else {
+            assigneesSection += '<p style="color: #7f8c8d;">No one assigned yet</p>';
+        }
+        assigneesSection += '</div>';
+        
+        // Add assignee form
+        assigneesSection += '<div class="add-assignee-form">';
+        assigneesSection += '<select id="newAssigneeSelect"><option value="">Select user to assign...</option>';
+        users.forEach(user => {
+            const alreadyAssigned = assignments.some(a => a.user_id === user.id);
+            if (!alreadyAssigned) {
+                assigneesSection += `<option value="${user.id}">${escapeHtml(user.display_name)}</option>`;
+            }
+        });
+        assigneesSection += '</select>';
+        assigneesSection += `<button class="btn btn-primary" onclick="addAssignee(${taskId})">Add</button>`;
+        assigneesSection += '</div>';
+        assigneesSection += '</div>';
+        
         // Update estimated completion section
         const estCompletionValue = task.estimated_completion ? new Date(task.estimated_completion).toISOString().slice(0, 16) : '';
         
@@ -300,14 +540,11 @@ async function showTaskDetail(taskId) {
                         <span class="priority-badge priority-${task.priority}">
                             ${task.priority.toUpperCase()} PRIORITY
                         </span>
-                        ${task.assignee_name ? `
-                            <span class="task-assignee" style="background: ${task.assignee_color}">
-                                👤 Assigned to ${escapeHtml(task.assignee_name)}
-                            </span>
-                        ` : ''}
                     </div>
                     
                     ${timeSection}
+                    
+                    ${assigneesSection}
                     
                     <div class="time-update">
                         <label><strong>Update Estimated Completion:</strong></label>
@@ -414,12 +651,51 @@ async function showTaskDetail(taskId) {
     }
 }
 
+async function addAssignee(taskId) {
+    const userId = document.getElementById('newAssigneeSelect').value;
+    
+    if (!userId) {
+        showNotification('Please select a user', 'error');
+        return;
+    }
+    
+    if (!currentUserId) {
+        showNotification('Please select yourself as current user first', 'error');
+        return;
+    }
+    
+    try {
+        await apiCall(`/tasks/${taskId}/assignments`, 'POST', {
+            user_id: parseInt(userId),
+            assigned_by: currentUserId
+        });
+        
+        showTaskDetail(taskId);
+        loadTasks(currentProjectId);
+        showNotification('User assigned!', 'success');
+    } catch (error) {
+        showNotification(error.message || 'Failed to assign user', 'error');
+    }
+}
+
+async function removeAssignee(assignmentId, taskId) {
+    if (!confirm('Remove this person from the task?')) return;
+    
+    try {
+        await apiCall(`/assignments/${assignmentId}`, 'DELETE');
+        showTaskDetail(taskId);
+        loadTasks(currentProjectId);
+        showNotification('User removed from task', 'success');
+    } catch (error) {
+        showNotification('Failed to remove user', 'error');
+    }
+}
+
 async function changeTaskStatus(taskId, newStatus) {
     try {
         await apiCall(`/tasks/${taskId}`, 'PUT', { status: newStatus });
         closeModal('taskDetailModal');
         loadTasks(currentProjectId);
-        loadStats();
         showNotification('Task status updated!', 'success');
     } catch (error) {
         showNotification('Failed to update task', 'error');
@@ -435,7 +711,6 @@ async function deleteTask(taskId) {
         await apiCall(`/tasks/${taskId}`, 'DELETE');
         closeModal('taskDetailModal');
         loadTasks(currentProjectId);
-        loadStats();
         showNotification('Task deleted', 'success');
     } catch (error) {
         showNotification('Failed to delete task', 'error');
@@ -447,6 +722,7 @@ function showTaskModal() {
         showNotification('Please select a user first', 'error');
         return;
     }
+    updateAssigneeCheckboxes();
     showModal('taskModal');
 }
 
@@ -460,22 +736,36 @@ async function handleTaskSubmit(e) {
     
     const estimatedCompletion = document.getElementById('taskEstimatedCompletion').value;
     
+    // Get selected assignees
+    const selectedAssignees = [];
+    document.querySelectorAll('#assigneeCheckboxes input[type="checkbox"]:checked').forEach(checkbox => {
+        selectedAssignees.push(parseInt(checkbox.value));
+    });
+    
     const data = {
         title: document.getElementById('taskTitle').value,
         description: document.getElementById('taskDescription').value,
         status: document.getElementById('taskStatus').value,
         priority: document.getElementById('taskPriority').value,
-        assigned_to: parseInt(document.getElementById('taskAssignee').value) || null,
+        assigned_to: selectedAssignees.length > 0 ? selectedAssignees[0] : null, // Legacy field
         created_by: currentUserId,
         estimated_completion: estimatedCompletion || null
     };
     
     try {
-        await apiCall(`/projects/${currentProjectId}/tasks`, 'POST', data);
+        const task = await apiCall(`/projects/${currentProjectId}/tasks`, 'POST', data);
+        
+        // Assign all selected users
+        for (const userId of selectedAssignees) {
+            await apiCall(`/tasks/${task.id}/assignments`, 'POST', {
+                user_id: userId,
+                assigned_by: currentUserId
+            });
+        }
+        
         closeModal('taskModal');
         document.getElementById('taskForm').reset();
         loadTasks(currentProjectId);
-        loadStats();
         showNotification('Task created successfully!', 'success');
     } catch (error) {
         showNotification('Failed to create task', 'error');
@@ -572,22 +862,6 @@ async function updateTaskEstimation(taskId) {
     }
 }
 
-// Statistics
-async function loadStats() {
-    try {
-        const stats = await apiCall('/stats');
-        
-        document.getElementById('totalProjects').textContent = stats.total_projects;
-        document.getElementById('totalTasks').textContent = stats.total_tasks;
-        document.getElementById('startingTasks').textContent = stats.by_status.starting || 0;
-        document.getElementById('inProgressTasks').textContent = stats.by_status.in_progress || 0;
-        document.getElementById('ongoingTasks').textContent = stats.by_status.ongoing || 0;
-        document.getElementById('doneTasks').textContent = stats.by_status.done || 0;
-    } catch (error) {
-        console.error('Failed to load stats:', error);
-    }
-}
-
 // Utility Functions
 function showModal(modalId) {
     document.getElementById(modalId).style.display = 'block';
@@ -611,6 +885,7 @@ function showNotification(message, type = 'info') {
         box-shadow: 0 5px 20px rgba(0,0,0,0.3);
         z-index: 10000;
         animation: slideIn 0.3s;
+        max-width: 400px;
     `;
     notification.textContent = message;
     
