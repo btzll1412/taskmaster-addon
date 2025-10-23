@@ -125,7 +125,14 @@
         <div id="userModal" class="modal">
             <div class="modal-content">
                 <span class="close" onclick="closeModal('userModal')">&times;</span>
-                <h2>Create New User</h2>
+                <h2>Manage Users</h2>
+        
+                <!-- Existing Users List -->
+                <div class="users-list" id="usersList" style="margin-bottom: 20px;"></div>
+        
+                <hr style="margin: 20px 0; border: 1px solid #ecf0f1;">
+        
+                <h3>Create New User</h3>
                 <form id="userForm">
                     <input type="text" id="username" placeholder="Username" required>
                     <input type="text" id="displayName" placeholder="Display Name" required>
