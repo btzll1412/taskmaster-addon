@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskMaster - Collaborative Task Management</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎯 TaskMaster</h1>
+            <div class="header-actions">
+                <select id="currentUser" class="user-select">
+                    <option value="">Select User</option>
+                </select>
+                <button class="btn btn-primary" onclick="showModal('userModal')">+ User</button>
+                <button class="btn btn-primary" onclick="showModal('projectModal')">+ Project</button>
+            </div>
+        </header>
+
+        <!-- Stats Dashboard -->
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-value" id="totalProjects">0</div>
+                <div class="stat-label">Projects</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalTasks">0</div>
+                <div class="stat-label">Total Tasks</div>
+            </div>
+            <div class="stat-card status-starting">
+                <div class="stat-value" id="startingTasks">0</div>
+                <div class="stat-label">Starting</div>
+            </div>
+            <div class="stat-card status-in-progress">
+                <div class="stat-value" id="inProgressTasks">0</div>
+                <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-card status-ongoing">
+                <div class="stat-value" id="ongoingTasks">0</div>
+                <div class="stat-label">Ongoing</div>
+            </div>
+            <div class="stat-card status-done">
+                <div class="stat-value" id="doneTasks">0</div>
+                <div class="stat-label">Done</div>
+            </div>
+        </div>
+
+        <!-- Projects List -->
+        <div class="projects-section">
+            <h2>Projects</h2>
+            <div id="projectsList" class="projects-list"></div>
+        </div>
+
+        <!-- Tasks View (shown when project selected) -->
+        <div id="tasksView" class="tasks-view" style="display: none;">
+            <div class="tasks-header">
+                <h2 id="projectTitle"></h2>
+                <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
+            </div>
+            <div id="tasksList" class="tasks-list"></div>
+        </div>
+
+        <!-- Task Detail Modal -->
+        <div id="taskDetailModal" class="modal">
+            <div class="modal-content modal-large">
+                <span class="close" onclick="closeModal('taskDetailModal')">&times;</span>
+                <div id="taskDetail"></div>
+            </div>
+        </div>
+
+        <!-- User Modal -->
+        <div id="userModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('userModal')">&times;</span>
+                <h2>Create New User</h2>
+                <form id="userForm">
+                    <input type="text" id="username" placeholder="Username" required>
+                    <input type="text" id="displayName" placeholder="Display Name" required>
+                    <input type="color" id="userColor" value="#3498db">
+                    <label>User Color</label>
+                    <button type="submit" class="btn btn-primary">Create User</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Project Modal -->
+        <div id="projectModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('projectModal')">&times;</span>
+                <h2>Create New Project</h2>
+                <form id="projectForm">
+                    <input type="text" id="projectName" placeholder="Project Name" required>
+                    <textarea id="projectDescription" placeholder="Description"></textarea>
+                    <button type="submit" class="btn btn-primary">Create Project</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Task Modal -->
+        <div id="taskModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('taskModal')">&times;</span>
+                <h2>Create New Task</h2>
+                <form id="taskForm">
+                    <input type="text" id="taskTitle" placeholder="Task Title" required>
+                    <textarea id="taskDescription" placeholder="Task Description"></textarea>
+                    
+                    <label>Status</label>
+                    <select id="taskStatus">
+                        <option value="starting">Starting</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="ongoing">Ongoing</option>
+                        <option value="done">Done</option>
+                    </select>
+
+                    <label>Priority</label>
+                    <select id="taskPriority">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                    </select>
+
+                    <label>Assign To</label>
+                    <select id="taskAssignee">
+                        <option value="">Unassigned</option>
+                    </select>
+
+                    <label>Estimated Completion Date/Time</label>
+                    <input type="datetime-local" id="taskEstimatedCompletion">
+
+                    <button type="submit" class="btn btn-primary">Create Task</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
