@@ -180,8 +180,24 @@ def handle_user(user_id):
     user = User.query.get_or_404(user_id)
     
     if request.method == 'DELETE':
+        # Check if user has tasks or projects
+        task_count = Task.query.filter_by(created_by=user_id).count()
+        project_count = Project.query.filter_by(created_by=user_id).count()
+        assignment_count = TaskAssignment.query.filter_by(user_id=user_id).count()
+        
+        if task_count > 0 or project_count > 0:
+            return jsonify({
+                'error': f'Cannot delete user. User has {task_count} tasks and {project_count} projects. Reassign them first.'
+            }), 400
+        
+        # Remove task assignments
+        TaskAssignment.query.filter_by(user_id=user_id).delete()
+        
         db.session.delete(user)
         db.session.commit()
+        
+        fire_event('taskmaster_user_deleted', {'user_id': user_id, 'username': user.username})
+        
         return '', 204
     
     if request.method == 'PUT':
