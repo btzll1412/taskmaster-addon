@@ -45,6 +45,7 @@ class Project(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
+    status = db.Column(db.String(20), default='active')  # active, on_hold, completed
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -55,7 +56,7 @@ class Task(db.Model):
     title = db.Column(db.String(300), nullable=False)
     description = db.Column(db.Text)
     status = db.Column(db.String(20), default='starting')  # starting, in_progress, ongoing, done
-    assigned_to = db.Column(db.Integer, db.ForeignKey('user.id'))
+    assigned_to = db.Column(db.Integer, db.ForeignKey('user.id'))  # Legacy - keep for compatibility
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -64,6 +65,13 @@ class Task(db.Model):
     started_at = db.Column(db.DateTime)  # When work actually started
     estimated_completion = db.Column(db.DateTime)  # Estimated finish time
     completed_at = db.Column(db.DateTime)  # When task was marked done
+
+class TaskAssignment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('task.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    assigned_by = db.Column(db.Integer, db.ForeignKey('user.id'))
 
 class Note(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -230,10 +238,10 @@ def handle_project(project_id):
     project = Project.query.get_or_404(project_id)
     
     if request.method == 'DELETE':
+        # Delete all tasks and notes associated with this project
         tasks = Task.query.filter_by(project_id=project_id).all()
         for task in tasks:
             Note.query.filter_by(task_id=task.id).delete()
-            TaskImage.query.filter_by(task_id=task.id).delete()
         Task.query.filter_by(project_id=project_id).delete()
         db.session.delete(project)
         db.session.commit()
@@ -259,6 +267,7 @@ def handle_tasks(project_id):
     if request.method == 'POST':
         data = request.json
         
+        # Set started_at if status is in_progress or ongoing
         started_at = None
         if data.get('status') in ['in_progress', 'ongoing']:
             started_at = datetime.utcnow()
@@ -275,6 +284,7 @@ def handle_tasks(project_id):
             estimated_completion=data.get('estimated_completion')
         )
         
+        # Parse estimated_completion if provided as string
         if data.get('estimated_completion'):
             try:
                 task.estimated_completion = datetime.fromisoformat(data['estimated_completion'].replace('Z', '+00:00'))
@@ -284,6 +294,7 @@ def handle_tasks(project_id):
         db.session.add(task)
         db.session.commit()
         
+        # Send notification if task is assigned
         if task.assigned_to:
             assignee = User.query.get(task.assigned_to)
             notify_home_assistant(
@@ -291,6 +302,7 @@ def handle_tasks(project_id):
                 f"Task Assignment - {assignee.display_name}"
             )
         
+        # Fire event
         fire_event('taskmaster_task_created', {
             'task_id': task.id,
             'project_id': project_id,
@@ -299,6 +311,7 @@ def handle_tasks(project_id):
             'assigned_to': task.assigned_to
         })
         
+        # Update statistics sensor
         update_task_stats()
         
         return jsonify(serialize_task(task)), 201
@@ -312,7 +325,6 @@ def handle_task(task_id):
     
     if request.method == 'DELETE':
         Note.query.filter_by(task_id=task_id).delete()
-        TaskImage.query.filter_by(task_id=task_id).delete()
         db.session.delete(task)
         db.session.commit()
         update_task_stats()
@@ -329,6 +341,7 @@ def handle_task(task_id):
         task.assigned_to = data.get('assigned_to', task.assigned_to)
         task.priority = data.get('priority', task.priority)
         
+        # Update estimated_completion if provided
         if 'estimated_completion' in data:
             if data['estimated_completion']:
                 try:
@@ -338,17 +351,21 @@ def handle_task(task_id):
             else:
                 task.estimated_completion = None
         
+        # Track when work starts
         if old_status == 'starting' and task.status in ['in_progress', 'ongoing'] and not task.started_at:
             task.started_at = datetime.utcnow()
         
+        # Track when task is completed
         if old_status != 'done' and task.status == 'done':
             task.completed_at = datetime.utcnow()
         
+        # Clear completion time if moved back from done
         if old_status == 'done' and task.status != 'done':
             task.completed_at = None
         
         db.session.commit()
         
+        # Fire event if status changed
         if old_status != task.status:
             fire_event('taskmaster_task_status_changed', {
                 'task_id': task.id,
@@ -360,6 +377,7 @@ def handle_task(task_id):
             if task.status == 'done':
                 notify_home_assistant(f"Task completed: {task.title}", "Task Done!")
         
+        # Notify if reassigned
         if old_assignee != task.assigned_to and task.assigned_to:
             assignee = User.query.get(task.assigned_to)
             notify_home_assistant(
@@ -417,6 +435,7 @@ def handle_task_images(task_id):
     task = Task.query.get_or_404(task_id)
     
     if request.method == 'POST':
+        # Check if file is in request
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
         
@@ -430,14 +449,19 @@ def handle_task_images(task_id):
             return jsonify({'error': 'No file selected'}), 400
         
         if file and allowed_file(file.filename):
+            # Generate unique filename
             original_filename = secure_filename(file.filename)
             file_extension = original_filename.rsplit('.', 1)[1].lower()
             unique_filename = f"{uuid.uuid4().hex}.{file_extension}"
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
             
+            # Save file
             file.save(file_path)
+            
+            # Get file size
             file_size = os.path.getsize(file_path)
             
+            # Determine mime type
             mime_types = {
                 'png': 'image/png',
                 'jpg': 'image/jpeg',
@@ -448,6 +472,7 @@ def handle_task_images(task_id):
             }
             mime_type = mime_types.get(file_extension, 'application/octet-stream')
             
+            # Create database entry
             task_image = TaskImage(
                 task_id=task_id,
                 user_id=int(user_id),
@@ -460,6 +485,7 @@ def handle_task_images(task_id):
             db.session.add(task_image)
             db.session.commit()
             
+            # Fire event
             fire_event('taskmaster_image_uploaded', {
                 'task_id': task_id,
                 'image_id': task_image.id,
@@ -471,6 +497,7 @@ def handle_task_images(task_id):
         
         return jsonify({'error': 'Invalid file type'}), 400
     
+    # GET - Return all images for task
     images = TaskImage.query.filter_by(task_id=task_id).order_by(TaskImage.created_at.desc()).all()
     return jsonify([serialize_task_image(img) for img in images])
 
@@ -478,12 +505,14 @@ def handle_task_images(task_id):
 def handle_task_image(image_id):
     image = TaskImage.query.get_or_404(image_id)
     
+    # Delete file from filesystem
     try:
         if os.path.exists(image.file_path):
             os.remove(image.file_path)
     except Exception as e:
         print(f"Error deleting file: {e}")
     
+    # Delete database entry
     db.session.delete(image)
     db.session.commit()
     
@@ -519,6 +548,7 @@ def get_stats():
         'recent_activity': []
     }
     
+    # Get recent tasks
     recent_tasks = Task.query.order_by(Task.updated_at.desc()).limit(5).all()
     stats['recent_activity'] = [serialize_task(t) for t in recent_tasks]
     
