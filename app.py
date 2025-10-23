@@ -597,6 +597,19 @@ def serialize_task(task):
     creator = User.query.get(task.created_by)
     assignee = User.query.get(task.assigned_to) if task.assigned_to else None
     
+    # Get all assignments
+    assignments = TaskAssignment.query.filter_by(task_id=task.id).all()
+    assignees = []
+    for assignment in assignments:
+        user = User.query.get(assignment.user_id)
+        if user:
+            assignees.append({
+                'id': assignment.id,
+                'user_id': user.id,
+                'username': user.display_name,
+                'color': user.color
+            })
+    
     return {
         'id': task.id,
         'project_id': task.project_id,
@@ -607,6 +620,7 @@ def serialize_task(task):
         'assigned_to': task.assigned_to,
         'assignee_name': assignee.display_name if assignee else None,
         'assignee_color': assignee.color if assignee else None,
+        'assignees': assignees,  # NEW - multiple assignees
         'created_by': task.created_by,
         'creator_name': creator.display_name if creator else 'Unknown',
         'created_at': task.created_at.isoformat(),
@@ -647,6 +661,21 @@ def serialize_task_image(image):
         'created_at': image.created_at.isoformat()
     }
 
+def serialize_assignment(assignment):
+    user = User.query.get(assignment.user_id)
+    assigned_by_user = User.query.get(assignment.assigned_by) if assignment.assigned_by else None
+    
+    return {
+        'id': assignment.id,
+        'task_id': assignment.task_id,
+        'user_id': assignment.user_id,
+        'username': user.display_name if user else 'Unknown',
+        'user_color': user.color if user else '#3498db',
+        'assigned_at': assignment.assigned_at.isoformat(),
+        'assigned_by': assignment.assigned_by,
+        'assigned_by_name': assigned_by_user.display_name if assigned_by_user else 'Unknown'
+    }
+
 def update_task_stats():
     """Update Home Assistant sensors with task statistics"""
     stats = {
@@ -670,6 +699,62 @@ def index():
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory('web', path)
+
+# API Routes - Task Assignments (Multiple Assignees)
+@app.route('/api/tasks/<int:task_id>/assignments', methods=['GET', 'POST'])
+def handle_task_assignments(task_id):
+    task = Task.query.get_or_404(task_id)
+    
+    if request.method == 'POST':
+        data = request.json
+        user_id = data['user_id']
+        assigned_by = data.get('assigned_by', currentUserId)
+        
+        # Check if already assigned
+        existing = TaskAssignment.query.filter_by(task_id=task_id, user_id=user_id).first()
+        if existing:
+            return jsonify({'error': 'User already assigned to this task'}), 400
+        
+        assignment = TaskAssignment(
+            task_id=task_id,
+            user_id=user_id,
+            assigned_by=assigned_by
+        )
+        db.session.add(assignment)
+        db.session.commit()
+        
+        user = User.query.get(user_id)
+        fire_event('taskmaster_user_assigned', {
+            'task_id': task_id,
+            'user_id': user_id,
+            'username': user.display_name if user else 'Unknown'
+        })
+        
+        notify_home_assistant(
+            f"You have been assigned to task: {task.title}",
+            f"Task Assignment - {user.display_name if user else 'User'}"
+        )
+        
+        return jsonify(serialize_assignment(assignment)), 201
+    
+    # GET - Return all assignments
+    assignments = TaskAssignment.query.filter_by(task_id=task_id).all()
+    return jsonify([serialize_assignment(a) for a in assignments])
+
+@app.route('/api/assignments/<int:assignment_id>', methods=['DELETE'])
+def handle_task_assignment(assignment_id):
+    assignment = TaskAssignment.query.get_or_404(assignment_id)
+    task_id = assignment.task_id
+    
+    db.session.delete(assignment)
+    db.session.commit()
+    
+    fire_event('taskmaster_user_unassigned', {
+        'task_id': task_id,
+        'user_id': assignment.user_id
+    })
+    
+    return '', 204
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8099, debug=False)
