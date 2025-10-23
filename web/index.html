@@ -10,56 +10,106 @@
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <h1>🎯 TaskMaster</h1>
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📋</span>
+                    <h1>TaskMaster</h1>
+                </div>
+            </div>
             <div class="header-actions">
+                <button class="btn btn-nav" onclick="showDashboard()" id="dashboardBtn">Dashboard</button>
+                <button class="btn btn-nav" onclick="showProjectsPage()" id="projectsBtn">Projects</button>
                 <select id="currentUser" class="user-select">
                     <option value="">Select User</option>
                 </select>
                 <button class="btn btn-primary" onclick="showModal('userModal')">+ User</button>
-                <button class="btn btn-primary" onclick="showModal('projectModal')">+ Project</button>
             </div>
         </header>
 
-        <!-- Stats Dashboard -->
-        <div class="stats-container">
-            <div class="stat-card">
-                <div class="stat-value" id="totalProjects">0</div>
-                <div class="stat-label">Projects</div>
+        <!-- Dashboard View (Project Status Overview) -->
+        <div id="dashboardView" class="dashboard-view">
+            <h2>Project Dashboard</h2>
+            
+            <!-- Project Stats by Status -->
+            <div class="stats-container">
+                <div class="stat-card status-active">
+                    <div class="stat-value" id="activeProjects">0</div>
+                    <div class="stat-label">Active Projects</div>
+                </div>
+                <div class="stat-card status-on-hold">
+                    <div class="stat-value" id="onHoldProjects">0</div>
+                    <div class="stat-label">On Hold</div>
+                </div>
+                <div class="stat-card status-completed">
+                    <div class="stat-value" id="completedProjects">0</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalTasks">0</div>
+                    <div class="stat-label">Total Tasks</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value" id="totalTasks">0</div>
-                <div class="stat-label">Total Tasks</div>
-            </div>
-            <div class="stat-card status-starting">
-                <div class="stat-value" id="startingTasks">0</div>
-                <div class="stat-label">Starting</div>
-            </div>
-            <div class="stat-card status-in-progress">
-                <div class="stat-value" id="inProgressTasks">0</div>
-                <div class="stat-label">In Progress</div>
-            </div>
-            <div class="stat-card status-ongoing">
-                <div class="stat-value" id="ongoingTasks">0</div>
-                <div class="stat-label">Ongoing</div>
-            </div>
-            <div class="stat-card status-done">
-                <div class="stat-value" id="doneTasks">0</div>
-                <div class="stat-label">Done</div>
+
+            <!-- Projects by Status -->
+            <div class="projects-by-status">
+                <div class="status-column">
+                    <h3 class="status-header status-active">🚀 Active Projects</h3>
+                    <div id="activeProjectsList" class="projects-list-column"></div>
+                </div>
+                <div class="status-column">
+                    <h3 class="status-header status-on-hold">⏸️ On Hold</h3>
+                    <div id="onHoldProjectsList" class="projects-list-column"></div>
+                </div>
+                <div class="status-column">
+                    <h3 class="status-header status-completed">✅ Completed</h3>
+                    <div id="completedProjectsList" class="projects-list-column"></div>
+                </div>
             </div>
         </div>
 
-        <!-- Projects List -->
-        <div class="projects-section">
-            <h2>Projects</h2>
-            <div id="projectsList" class="projects-list"></div>
+        <!-- Projects Page (All Projects) -->
+        <div id="projectsPage" class="projects-page" style="display: none;">
+            <div class="page-header">
+                <h2>All Projects</h2>
+                <button class="btn btn-primary" onclick="showModal('projectModal')">+ New Project</button>
+            </div>
+            <div id="allProjectsList" class="projects-grid"></div>
         </div>
 
         <!-- Tasks View (shown when project selected) -->
         <div id="tasksView" class="tasks-view" style="display: none;">
             <div class="tasks-header">
-                <h2 id="projectTitle"></h2>
-                <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
+                <div>
+                    <button class="btn btn-secondary" onclick="backToProjects()">← Back</button>
+                    <h2 id="projectTitle"></h2>
+                    <div class="project-status-badges" id="projectStatusBadges"></div>
+                </div>
+                <div class="tasks-header-actions">
+                    <button class="btn btn-secondary" onclick="showProjectStatusModal()">Change Status</button>
+                    <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
+                </div>
             </div>
+
+            <!-- Task Stats for Current Project -->
+            <div class="stats-container">
+                <div class="stat-card status-starting">
+                    <div class="stat-value" id="projectStartingTasks">0</div>
+                    <div class="stat-label">Starting</div>
+                </div>
+                <div class="stat-card status-in-progress">
+                    <div class="stat-value" id="projectInProgressTasks">0</div>
+                    <div class="stat-label">In Progress</div>
+                </div>
+                <div class="stat-card status-ongoing">
+                    <div class="stat-value" id="projectOngoingTasks">0</div>
+                    <div class="stat-label">Ongoing</div>
+                </div>
+                <div class="stat-card status-done">
+                    <div class="stat-value" id="projectDoneTasks">0</div>
+                    <div class="stat-label">Done</div>
+                </div>
+            </div>
+
             <div id="tasksList" class="tasks-list"></div>
         </div>
 
@@ -94,8 +144,35 @@
                 <form id="projectForm">
                     <input type="text" id="projectName" placeholder="Project Name" required>
                     <textarea id="projectDescription" placeholder="Description"></textarea>
+                    
+                    <label>Initial Status</label>
+                    <select id="projectStatus">
+                        <option value="active">Active</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                    
                     <button type="submit" class="btn btn-primary">Create Project</button>
                 </form>
+            </div>
+        </div>
+
+        <!-- Project Status Change Modal -->
+        <div id="projectStatusModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('projectStatusModal')">&times;</span>
+                <h2>Change Project Status</h2>
+                <div class="status-buttons">
+                    <button class="btn btn-status status-active" onclick="changeProjectStatus('active')">
+                        🚀 Active
+                    </button>
+                    <button class="btn btn-status status-on-hold" onclick="changeProjectStatus('on_hold')">
+                        ⏸️ On Hold
+                    </button>
+                    <button class="btn btn-status status-completed" onclick="changeProjectStatus('completed')">
+                        ✅ Completed
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -123,10 +200,8 @@
                         <option value="high">High</option>
                     </select>
 
-                    <label>Assign To</label>
-                    <select id="taskAssignee">
-                        <option value="">Unassigned</option>
-                    </select>
+                    <label>Assign To (Multiple)</label>
+                    <div id="assigneeCheckboxes" class="checkbox-group"></div>
 
                     <label>Estimated Completion Date/Time</label>
                     <input type="datetime-local" id="taskEstimatedCompletion">
