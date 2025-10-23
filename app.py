@@ -708,7 +708,7 @@ def handle_task_assignments(task_id):
     if request.method == 'POST':
         data = request.json
         user_id = data['user_id']
-        assigned_by = data.get('assigned_by', currentUserId)
+        assigned_by = data.get('assigned_by')  # Fixed - removed undefined variable
         
         # Check if already assigned
         existing = TaskAssignment.query.filter_by(task_id=task_id, user_id=user_id).first()
