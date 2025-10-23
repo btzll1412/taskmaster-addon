@@ -100,6 +100,114 @@ function backToProjects() {
     showProjectsPage();
 }
 
+async function showMyWork() {
+    if (!currentUserId) {
+        showNotification('Please select a user first', 'error');
+        return;
+    }
+    
+    currentView = 'mywork';
+    document.getElementById('dashboardView').style.display = 'none';
+    document.getElementById('projectsPage').style.display = 'none';
+    document.getElementById('tasksView').style.display = 'none';
+    document.getElementById('myWorkView').style.display = 'block';
+    
+    document.getElementById('dashboardBtn').classList.remove('active');
+    document.getElementById('projectsBtn').classList.remove('active');
+    document.getElementById('myWorkBtn').classList.add('active');
+    
+    // Show current user name
+    const currentUser = users.find(u => u.id === currentUserId);
+    if (currentUser) {
+        document.getElementById('myWorkUserName').textContent = `Tasks assigned to ${currentUser.display_name}`;
+    }
+    
+    // Load all tasks assigned to current user
+    try {
+        let myTasks = [];
+        
+        for (const project of projects) {
+            const tasks = await apiCall(`/projects/${project.id}/tasks`);
+            
+            // Filter tasks assigned to current user
+            for (const task of tasks) {
+                const assignments = await apiCall(`/tasks/${task.id}/assignments`);
+                const isAssigned = assignments.some(a => a.user_id === currentUserId);
+                
+                if (isAssigned) {
+                    task.project_name = project.name;
+                    myTasks.push(task);
+                }
+            }
+        }
+        
+        displayMyTasks(myTasks);
+    } catch (error) {
+        console.error('Failed to load my tasks:', error);
+        showNotification('Failed to load your tasks', 'error');
+    }
+}
+
+function displayMyTasks(tasks) {
+    const container = document.getElementById('myTasksList');
+    
+    // Update stats
+    const stats = {
+        starting: tasks.filter(t => t.status === 'starting').length,
+        in_progress: tasks.filter(t => t.status === 'in_progress').length,
+        ongoing: tasks.filter(t => t.status === 'ongoing').length,
+        done: tasks.filter(t => t.status === 'done').length
+    };
+    
+    document.getElementById('myStartingTasks').textContent = stats.starting;
+    document.getElementById('myInProgressTasks').textContent = stats.in_progress;
+    document.getElementById('myOngoingTasks').textContent = stats.ongoing;
+    document.getElementById('myDoneTasks').textContent = stats.done;
+    
+    if (tasks.length === 0) {
+        container.innerHTML = '<p style="color: #7f8c8d;">No tasks assigned to you yet!</p>';
+        return;
+    }
+    
+    container.innerHTML = tasks.map(task => {
+        let timeInfo = '';
+        if (task.started_at) {
+            timeInfo += `<span>⏱️ Started: ${formatDate(task.started_at)}</span>`;
+        }
+        if (task.estimated_completion) {
+            const estDate = new Date(task.estimated_completion);
+            const now = new Date();
+            const isOverdue = estDate < now && task.status !== 'done';
+            timeInfo += `<span style="${isOverdue ? 'color: #e74c3c; font-weight: bold;' : ''}">📅 Est: ${formatDate(task.estimated_completion)}</span>`;
+        }
+        if (task.completed_at) {
+            timeInfo += `<span>✅ Done: ${formatDate(task.completed_at)}</span>`;
+        }
+        
+        return `
+        <div class="task-card status-${task.status}" onclick="showTaskDetail(${task.id})">
+            <div class="task-info">
+                <div style="color: #7f8c8d; font-size: 12px; margin-bottom: 5px;">📁 ${escapeHtml(task.project_name)}</div>
+                <div class="task-title">${escapeHtml(task.title)}</div>
+                <div class="task-meta">
+                    <span class="priority-badge priority-${task.priority}">
+                        ${task.priority.toUpperCase()}
+                    </span>
+                    <span>💬 ${task.note_count} notes</span>
+                    <span>📷 ${task.image_count} images</span>
+                </div>
+                ${timeInfo ? `<div class="task-meta" style="margin-top: 5px;">${timeInfo}</div>` : ''}
+            </div>
+            <div>
+                <span class="status-badge status-${task.status}">
+                    ${formatStatus(task.status)}
+                </span>
+            </div>
+        </div>
+    `;
+    }).join('');
+}
+
 // Users
 async function loadUsers() {
     try {
