@@ -736,7 +736,7 @@ async function handleTaskSubmit(e) {
     
     const estimatedCompletion = document.getElementById('taskEstimatedCompletion').value;
     
-    // Get selected assignees
+    // Get selected assignees (OPTIONAL)
     const selectedAssignees = [];
     document.querySelectorAll('#assigneeCheckboxes input[type="checkbox"]:checked').forEach(checkbox => {
         selectedAssignees.push(parseInt(checkbox.value));
@@ -747,7 +747,7 @@ async function handleTaskSubmit(e) {
         description: document.getElementById('taskDescription').value,
         status: document.getElementById('taskStatus').value,
         priority: document.getElementById('taskPriority').value,
-        assigned_to: selectedAssignees.length > 0 ? selectedAssignees[0] : null, // Legacy field
+        assigned_to: null,  // Legacy field - always null now
         created_by: currentUserId,
         estimated_completion: estimatedCompletion || null
     };
@@ -755,12 +755,18 @@ async function handleTaskSubmit(e) {
     try {
         const task = await apiCall(`/projects/${currentProjectId}/tasks`, 'POST', data);
         
-        // Assign all selected users
-        for (const userId of selectedAssignees) {
-            await apiCall(`/tasks/${task.id}/assignments`, 'POST', {
-                user_id: userId,
-                assigned_by: currentUserId
-            });
+        // Assign all selected users (ONLY if any selected)
+        if (selectedAssignees.length > 0) {
+            for (const userId of selectedAssignees) {
+                try {
+                    await apiCall(`/tasks/${task.id}/assignments`, 'POST', {
+                        user_id: userId,
+                        assigned_by: currentUserId
+                    });
+                } catch (assignError) {
+                    console.error('Failed to assign user:', assignError);
+                }
+            }
         }
         
         closeModal('taskModal');
