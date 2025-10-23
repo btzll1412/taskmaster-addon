@@ -1,0 +1,235 @@
+# TaskMaster Home Assistant Configuration Examples
+
+# Add this to your configuration.yaml
+
+# REST Sensors for Task Statistics
+sensor:
+  - platform: rest
+    name: TaskMaster Total Tasks
+    resource: http://localhost:8099/api/stats
+    value_template: '{{ value_json.total_tasks }}'
+    json_attributes:
+      - total_projects
+      - total_users
+      - by_status
+    scan_interval: 60
+
+  - platform: template
+    sensors:
+      taskmaster_done_tasks:
+        friendly_name: "Done Tasks"
+        value_template: "{{ state_attr('sensor.taskmaster_total_tasks', 'by_status')['done'] | default(0) }}"
+      
+      taskmaster_in_progress_tasks:
+        friendly_name: "Tasks In Progress"
+        value_template: "{{ state_attr('sensor.taskmaster_total_tasks', 'by_status')['in_progress'] | default(0) }}"
+      
+      taskmaster_starting_tasks:
+        friendly_name: "Starting Tasks"
+        value_template: "{{ state_attr('sensor.taskmaster_total_tasks', 'by_status')['starting'] | default(0) }}"
+      
+      taskmaster_ongoing_tasks:
+        friendly_name: "Ongoing Tasks"
+        value_template: "{{ state_attr('sensor.taskmaster_total_tasks', 'by_status')['ongoing'] | default(0) }}"
+
+# Binary Sensor for overdue tasks detection
+binary_sensor:
+  - platform: template
+    sensors:
+      taskmaster_has_tasks:
+        friendly_name: "TaskMaster Has Active Tasks"
+        value_template: "{{ states('sensor.taskmaster_total_tasks') | int > 0 }}"
+
+# Example Automations
+
+automation:
+  # Send notification when a task is completed
+  - alias: "TaskMaster - Task Completed Notification"
+    trigger:
+      - platform: event
+        event_type: taskmaster_task_status_changed
+        event_data:
+          new_status: done
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "🎉 Task Completed!"
+          message: "{{ trigger.event.data.title }} has been marked as done!"
+          
+  # Send notification when a new task is created
+  - alias: "TaskMaster - New Task Created"
+    trigger:
+      - platform: event
+        event_type: taskmaster_task_created
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "📋 New Task Created"
+          message: "{{ trigger.event.data.title }} - Status: {{ trigger.event.data.status }}"
+          
+  # Turn on lights when task status changes to in_progress during evening
+  - alias: "TaskMaster - Work Mode Lighting"
+    trigger:
+      - platform: event
+        event_type: taskmaster_task_status_changed
+        event_data:
+          new_status: in_progress
+    condition:
+      - condition: time
+        after: "18:00:00"
+        before: "23:00:00"
+    action:
+      - service: light.turn_on
+        target:
+          entity_id: light.desk_lamp
+        data:
+          brightness: 255
+          color_temp: 300
+          
+  # Daily summary of tasks
+  - alias: "TaskMaster - Daily Summary"
+    trigger:
+      - platform: time
+        at: "09:00:00"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "📊 Daily Task Summary"
+          message: >
+            Starting: {{ states('sensor.taskmaster_starting_tasks') }}
+            In Progress: {{ states('sensor.taskmaster_in_progress_tasks') }}
+            Ongoing: {{ states('sensor.taskmaster_ongoing_tasks') }}
+            Done: {{ states('sensor.taskmaster_done_tasks') }}
+            
+  # Trigger when assigned a task
+  - alias: "TaskMaster - Task Assigned"
+    trigger:
+      - platform: event
+        event_type: taskmaster_task_created
+    condition:
+      - condition: template
+        value_template: "{{ trigger.event.data.assigned_to is not none }}"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "👤 Task Assigned to You"
+          message: "You've been assigned: {{ trigger.event.data.title }}"
+      - service: tts.google_translate_say
+        data:
+          entity_id: media_player.living_room_speaker
+          message: "You have been assigned a new task"
+          
+  # Turn off work lights when all tasks are done
+  - alias: "TaskMaster - All Tasks Complete"
+    trigger:
+      - platform: state
+        entity_id: sensor.taskmaster_in_progress_tasks
+        to: "0"
+    condition:
+      - condition: state
+        entity_id: sensor.taskmaster_starting_tasks
+        state: "0"
+      - condition: state
+        entity_id: sensor.taskmaster_ongoing_tasks
+        state: "0"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "🎉 All Tasks Complete!"
+          message: "Great job! All your tasks are done."
+      - service: light.turn_off
+        target:
+          entity_id: light.desk_lamp
+          
+  # Note added notification
+  - alias: "TaskMaster - Note Added to Task"
+    trigger:
+      - platform: event
+        event_type: taskmaster_note_added
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "💬 New Note Added"
+          message: "A note was added to task ID {{ trigger.event.data.task_id }}"
+
+  # Image uploaded notification
+  - alias: "TaskMaster - Image Uploaded"
+    trigger:
+      - platform: event
+        event_type: taskmaster_image_uploaded
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "📷 Image Uploaded"
+          message: "{{ trigger.event.data.filename }} was uploaded to a task"
+
+# Lovelace Dashboard Card Example
+# Add this to your Lovelace configuration:
+
+# type: vertical-stack
+# cards:
+#   - type: entity
+#     entity: sensor.taskmaster_total_tasks
+#     name: TaskMaster
+#     icon: mdi:clipboard-check
+#   
+#   - type: horizontal-stack
+#     cards:
+#       - type: entity
+#         entity: sensor.taskmaster_starting_tasks
+#         name: Starting
+#         icon: mdi:rocket-launch
+#       - type: entity
+#         entity: sensor.taskmaster_in_progress_tasks
+#         name: In Progress
+#         icon: mdi:progress-clock
+#       - type: entity
+#         entity: sensor.taskmaster_ongoing_tasks
+#         name: Ongoing
+#         icon: mdi:refresh
+#       - type: entity
+#         entity: sensor.taskmaster_done_tasks
+#         name: Done
+#         icon: mdi:check-circle
+#   
+#   - type: iframe
+#     url: http://localhost:8099
+#     aspect_ratio: 75%
+
+# Services you can call from automations:
+
+# Add REST commands to configuration.yaml:
+rest_command:
+  taskmaster_create_task:
+    url: "http://localhost:8099/api/projects/{{ project_id }}/tasks"
+    method: POST
+    headers:
+      content-type: 'application/json'
+    payload: >
+      {
+        "title": "{{ title }}",
+        "description": "{{ description }}",
+        "status": "{{ status }}",
+        "created_by": {{ created_by }},
+        "estimated_completion": "{{ estimated_completion }}"
+      }
+      
+  taskmaster_update_task_status:
+    url: "http://localhost:8099/api/tasks/{{ task_id }}"
+    method: PUT
+    headers:
+      content-type: 'application/json'
+    payload: >
+      {
+        "status": "{{ status }}"
+      }
+
+  taskmaster_update_task_estimation:
+    url: "http://localhost:8099/api/tasks/{{ task_id }}"
+    method: PUT
+    headers:
+      content-type: 'application/json'
+    payload: >
+      {
+        "estimated_completion": "{{ estimated_completion }}"
+      }
