@@ -24,4 +24,3 @@ schema:
   ssl: bool
   certfile: str
   keyfile: str
-image: ghcr.io/home-assistant/{arch}-addon-taskmaster
