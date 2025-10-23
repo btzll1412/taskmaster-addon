@@ -17,13 +17,14 @@
                 </div>
             </div>
             <div class="header-actions">
-                <button class="btn btn-nav" onclick="showDashboard()" id="dashboardBtn">Dashboard</button>
-                <button class="btn btn-nav" onclick="showProjectsPage()" id="projectsBtn">Projects</button>
-                <select id="currentUser" class="user-select">
-                    <option value="">Select User</option>
-                </select>
-                <button class="btn btn-primary" onclick="showModal('userModal')">+ User</button>
-            </div>
+            <button class="btn btn-nav" onclick="showDashboard()" id="dashboardBtn">Dashboard</button>
+            <button class="btn btn-nav" onclick="showProjectsPage()" id="projectsBtn">Projects</button>
+            <button class="btn btn-nav" onclick="showMyWork()" id="myWorkBtn">My Work</button>
+            <select id="currentUser" class="user-select">
+                <option value="">Select User</option>
+            </select>
+            <button class="btn btn-primary" onclick="showModal('userModal')">+ User</button>
+        </div>
         </header>
 
         <!-- Dashboard View (Project Status Overview) -->
@@ -89,6 +90,35 @@
                     <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
                 </div>
             </div>
+
+            <!-- My Work View -->
+<div id="myWorkView" class="tasks-view" style="display: none;">
+    <div class="tasks-header">
+        <h2>My Work</h2>
+        <div id="myWorkUserName" style="color: #7f8c8d;"></div>
+    </div>
+    
+    <div class="stats-container">
+        <div class="stat-card status-starting">
+            <div class="stat-value" id="myStartingTasks">0</div>
+            <div class="stat-label">Starting</div>
+        </div>
+        <div class="stat-card status-in-progress">
+            <div class="stat-value" id="myInProgressTasks">0</div>
+            <div class="stat-label">In Progress</div>
+        </div>
+        <div class="stat-card status-ongoing">
+            <div class="stat-value" id="myOngoingTasks">0</div>
+            <div class="stat-label">Ongoing</div>
+        </div>
+        <div class="stat-card status-done">
+            <div class="stat-value" id="myDoneTasks">0</div>
+            <div class="stat-label">Done</div>
+        </div>
+    </div>
+    
+    <div id="myTasksList" class="tasks-list"></div>
+</div>
 
             <!-- Task Stats for Current Project -->
             <div class="stats-container">
