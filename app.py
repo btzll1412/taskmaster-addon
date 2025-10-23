@@ -221,6 +221,7 @@ def handle_projects():
         project = Project(
             name=data['name'],
             description=data.get('description', ''),
+            status=data.get('status', 'active'),
             created_by=data['created_by']
         )
         db.session.add(project)
@@ -228,13 +229,15 @@ def handle_projects():
         
         fire_event('taskmaster_project_created', {
             'project_id': project.id,
-            'project_name': project.name
+            'project_name': project.name,
+            'status': project.status
         })
         
         return jsonify({
             'id': project.id,
             'name': project.name,
             'description': project.description,
+            'status': project.status,
             'created_by': project.created_by,
             'created_at': project.created_at.isoformat()
         }), 201
@@ -244,20 +247,27 @@ def handle_projects():
         'id': p.id,
         'name': p.name,
         'description': p.description,
+        'status': p.status,
         'created_by': p.created_by,
         'created_at': p.created_at.isoformat(),
-        'task_count': Task.query.filter_by(project_id=p.id).count()
+        'task_count': Task.query.filter_by(project_id=p.id).count(),
+        'task_stats': {
+            'starting': Task.query.filter_by(project_id=p.id, status='starting').count(),
+            'in_progress': Task.query.filter_by(project_id=p.id, status='in_progress').count(),
+            'ongoing': Task.query.filter_by(project_id=p.id, status='ongoing').count(),
+            'done': Task.query.filter_by(project_id=p.id, status='done').count()
+        }
     } for p in projects])
-
 @app.route('/api/projects/<int:project_id>', methods=['GET', 'PUT', 'DELETE'])
 def handle_project(project_id):
     project = Project.query.get_or_404(project_id)
     
     if request.method == 'DELETE':
-        # Delete all tasks and notes associated with this project
         tasks = Task.query.filter_by(project_id=project_id).all()
         for task in tasks:
             Note.query.filter_by(task_id=task.id).delete()
+            TaskImage.query.filter_by(task_id=task.id).delete()
+            TaskAssignment.query.filter_by(task_id=task.id).delete()
         Task.query.filter_by(project_id=project_id).delete()
         db.session.delete(project)
         db.session.commit()
@@ -265,14 +275,26 @@ def handle_project(project_id):
     
     if request.method == 'PUT':
         data = request.json
+        old_status = project.status
+        
         project.name = data.get('name', project.name)
         project.description = data.get('description', project.description)
+        project.status = data.get('status', project.status)
         db.session.commit()
+        
+        if old_status != project.status:
+            fire_event('taskmaster_project_status_changed', {
+                'project_id': project.id,
+                'project_name': project.name,
+                'old_status': old_status,
+                'new_status': project.status
+            })
     
     return jsonify({
         'id': project.id,
         'name': project.name,
         'description': project.description,
+        'status': project.status,
         'created_by': project.created_by,
         'created_at': project.created_at.isoformat()
     })
