@@ -134,6 +134,34 @@ function updateUserSelects() {
     
     // Update assignee checkboxes
     updateAssigneeCheckboxes();
+    
+    // Update users list in modal
+    updateUsersListDisplay();
+}
+
+function updateUsersListDisplay() {
+    const container = document.getElementById('usersList');
+    if (!container) return;
+    
+    if (users.length === 0) {
+        container.innerHTML = '<p style="color: #7f8c8d;">No users yet</p>';
+        return;
+    }
+    
+    container.innerHTML = users.map(user => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 30px; height: 30px; border-radius: 50%; background: ${user.color};"></div>
+                <div>
+                    <strong>${escapeHtml(user.display_name)}</strong>
+                    <br><small style="color: #7f8c8d;">${escapeHtml(user.username)}</small>
+                </div>
+            </div>
+            <button class="btn btn-danger" onclick="deleteUser(${user.id})" style="padding: 5px 15px; font-size: 12px;">
+                Delete
+            </button>
+        </div>
+    `).join('');
 }
 
 function updateAssigneeCheckboxes() {
