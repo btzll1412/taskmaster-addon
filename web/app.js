@@ -1132,3 +1132,11 @@ window.onclick = function(event) {
         event.target.style.display = 'none';
     }
 }
+function showMyWorkQuick() {
+    showProjectsPage();
+    document.getElementById('myWorkFilter').checked = true;
+    toggleMyWorkFilter();
+    
+    document.getElementById('projectsBtn').classList.remove('active');
+    document.getElementById('myWorkBtn').classList.add('active');
+}
