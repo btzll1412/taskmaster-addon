@@ -7,7 +7,7 @@ let currentProjectId = null;
 let currentProject = null;
 let users = [];
 let projects = [];
-let currentView = 'dashboard'; // dashboard, projects, tasks
+let currentView = 'dashboard';
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -80,6 +80,7 @@ function showDashboard() {
     
     document.getElementById('dashboardBtn').classList.add('active');
     document.getElementById('projectsBtn').classList.remove('active');
+    document.getElementById('myWorkBtn').classList.remove('active');
     
     loadProjects();
 }
@@ -94,196 +95,41 @@ function showProjectsPage() {
     document.getElementById('projectsBtn').classList.add('active');
     document.getElementById('myWorkBtn').classList.remove('active');
     
-    // Reset filter checkbox
-    document.getElementById('myWorkFilter').checked = false;
+    // Reset filter
+    const filterCheckbox = document.getElementById('myWorkFilter');
+    if (filterCheckbox) {
+        filterCheckbox.checked = false;
+    }
     
     loadAllProjectsWithTasks();
 }
+
+function showMyWorkQuick() {
+    if (!currentUserId) {
+        showNotification('Please select a user first', 'error');
+        return;
+    }
+    
+    currentView = 'projects';
+    document.getElementById('dashboardView').style.display = 'none';
+    document.getElementById('projectsPage').style.display = 'block';
+    document.getElementById('tasksView').style.display = 'none';
+    
+    document.getElementById('dashboardBtn').classList.remove('active');
+    document.getElementById('projectsBtn').classList.remove('active');
+    document.getElementById('myWorkBtn').classList.add('active');
+    
+    // Enable filter
+    const filterCheckbox = document.getElementById('myWorkFilter');
+    if (filterCheckbox) {
+        filterCheckbox.checked = true;
+    }
+    
+    loadAllProjectsWithTasks();
+}
+
 function backToProjects() {
     showProjectsPage();
-}
-
-
-    
-  
-    
-    // Load all tasks assigned to current user
-    try {
-        let myTasks = [];
-        
-        for (const project of projects) {
-            const tasks = await apiCall(`/projects/${project.id}/tasks`);
-            
-            // Filter tasks assigned to current user
-            for (const task of tasks) {
-                const assignments = await apiCall(`/tasks/${task.id}/assignments`);
-                const isAssigned = assignments.some(a => a.user_id === currentUserId);
-                
-                if (isAssigned) {
-                    task.project_name = project.name;
-                    myTasks.push(task);
-                }
-            }
-        }
-        
-      async function loadAllProjectsWithTasks() {
-    try {
-        const allProjects = await apiCall('/projects');
-        
-        // Load tasks for each project
-        for (const project of allProjects) {
-            const tasks = await apiCall(`/projects/${project.id}/tasks`);
-            project.all_tasks = tasks;
-        }
-        
-        displayFilteredProjects(allProjects);
-    } catch (error) {
-        console.error('Failed to load projects:', error);
-    }
-}
-
-async function toggleMyWorkFilter() {
-    const isFiltered = document.getElementById('myWorkFilter').checked;
-    
-    if (isFiltered && !currentUserId) {
-        showNotification('Please select a user first', 'error');
-        document.getElementById('myWorkFilter').checked = false;
-        return;
-    }
-    
-    loadAllProjectsWithTasks();
-}
-
-function displayFilteredProjects(allProjects) {
-    const container = document.getElementById('allProjectsList');
-    const isFiltered = document.getElementById('myWorkFilter').checked;
-    
-    let projectsToShow = allProjects;
-    
-    // Filter projects if "My Work" is checked
-    if (isFiltered && currentUserId) {
-        projectsToShow = allProjects.filter(project => {
-            // Check if any task in this project is assigned to current user
-            return project.all_tasks.some(task => {
-                if (task.assignees && task.assignees.length > 0) {
-                    return task.assignees.some(a => a.user_id === currentUserId);
-                }
-                return false;
-            });
-        });
-    }
-    
-    if (projectsToShow.length === 0) {
-        if (isFiltered) {
-            container.innerHTML = '<p style="color: #7f8c8d;">No projects with tasks assigned to you</p>';
-        } else {
-            container.innerHTML = '<p style="color: #7f8c8d;">No projects yet. Create one to get started!</p>';
-        }
-        return;
-    }
-    
-    container.innerHTML = projectsToShow.map(project => {
-        // Calculate task stats
-        let myTaskCount = project.task_count;
-        let taskStats = project.task_stats || { starting: 0, in_progress: 0, ongoing: 0, done: 0 };
-        
-        if (isFiltered && currentUserId && project.all_tasks) {
-            // Filter tasks assigned to me
-            const myTasks = project.all_tasks.filter(task => {
-                if (task.assignees && task.assignees.length > 0) {
-                    return task.assignees.some(a => a.user_id === currentUserId);
-                }
-                return false;
-            });
-            
-            myTaskCount = myTasks.length;
-            taskStats = {
-                starting: myTasks.filter(t => t.status === 'starting').length,
-                in_progress: myTasks.filter(t => t.status === 'in_progress').length,
-                ongoing: myTasks.filter(t => t.status === 'ongoing').length,
-                done: myTasks.filter(t => t.status === 'done').length
-            };
-        }
-        
-        return `
-        <div class="project-card status-${project.status}" onclick="selectProject(${project.id})">
-            <div class="project-status-badge">${formatProjectStatus(project.status)}</div>
-            <h3>${escapeHtml(project.name)}</h3>
-            <p>${escapeHtml(project.description || 'No description')}</p>
-            <div class="task-count">
-                📋 ${myTaskCount} task${myTaskCount !== 1 ? 's' : ''}${isFiltered ? ' (assigned to you)' : ''}
-                ${taskStats ? `
-                    <br><small>
-                        ✅ ${taskStats.done} | 
-                        ⚡ ${taskStats.in_progress} | 
-                        🔄 ${taskStats.ongoing} | 
-                        🚀 ${taskStats.starting}
-                    </small>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    }).join('');
-}
-
-function displayMyTasks(tasks) {
-    const container = document.getElementById('myTasksList');
-    
-    // Update stats
-    const stats = {
-        starting: tasks.filter(t => t.status === 'starting').length,
-        in_progress: tasks.filter(t => t.status === 'in_progress').length,
-        ongoing: tasks.filter(t => t.status === 'ongoing').length,
-        done: tasks.filter(t => t.status === 'done').length
-    };
-    
-    document.getElementById('myStartingTasks').textContent = stats.starting;
-    document.getElementById('myInProgressTasks').textContent = stats.in_progress;
-    document.getElementById('myOngoingTasks').textContent = stats.ongoing;
-    document.getElementById('myDoneTasks').textContent = stats.done;
-    
-    if (tasks.length === 0) {
-        container.innerHTML = '<p style="color: #7f8c8d;">No tasks assigned to you yet!</p>';
-        return;
-    }
-    
-    container.innerHTML = tasks.map(task => {
-        let timeInfo = '';
-        if (task.started_at) {
-            timeInfo += `<span>⏱️ Started: ${formatDate(task.started_at)}</span>`;
-        }
-        if (task.estimated_completion) {
-            const estDate = new Date(task.estimated_completion);
-            const now = new Date();
-            const isOverdue = estDate < now && task.status !== 'done';
-            timeInfo += `<span style="${isOverdue ? 'color: #e74c3c; font-weight: bold;' : ''}">📅 Est: ${formatDate(task.estimated_completion)}</span>`;
-        }
-        if (task.completed_at) {
-            timeInfo += `<span>✅ Done: ${formatDate(task.completed_at)}</span>`;
-        }
-        
-        return `
-        <div class="task-card status-${task.status}" onclick="showTaskDetail(${task.id})">
-            <div class="task-info">
-                <div style="color: #7f8c8d; font-size: 12px; margin-bottom: 5px;">📁 ${escapeHtml(task.project_name)}</div>
-                <div class="task-title">${escapeHtml(task.title)}</div>
-                <div class="task-meta">
-                    <span class="priority-badge priority-${task.priority}">
-                        ${task.priority.toUpperCase()}
-                    </span>
-                    <span>💬 ${task.note_count} notes</span>
-                    <span>📷 ${task.image_count} images</span>
-                </div>
-                ${timeInfo ? `<div class="task-meta" style="margin-top: 5px;">${timeInfo}</div>` : ''}
-            </div>
-            <div>
-                <span class="status-badge status-${task.status}">
-                    ${formatStatus(task.status)}
-                </span>
-            </div>
-        </div>
-    `;
-    }).join('');
 }
 
 // Users
@@ -409,7 +255,7 @@ async function loadProjects() {
         if (currentView === 'dashboard') {
             displayDashboard();
         } else if (currentView === 'projects') {
-            displayAllProjects();
+            loadAllProjectsWithTasks();
         }
     } catch (error) {
         console.error('Failed to load projects:', error);
@@ -460,9 +306,125 @@ function displayProjectColumn(elementId, projectsList) {
     `).join('');
 }
 
-function displayAllProjects() {
+async function loadAllProjectsWithTasks() {
+    try {
+        const allProjects = await apiCall('/projects');
+        
+        // Load tasks for each project
+        for (const project of allProjects) {
+            const tasks = await apiCall(`/projects/${project.id}/tasks`);
+            
+            // Load assignees for each task
+            for (const task of tasks) {
+                try {
+                    const assignments = await apiCall(`/tasks/${task.id}/assignments`);
+                    task.assignees = assignments.map(a => ({
+                        user_id: a.user_id,
+                        username: a.username,
+                        color: a.user_color
+                    }));
+                } catch (err) {
+                    task.assignees = [];
+                }
+            }
+            
+            project.all_tasks = tasks;
+        }
+        
+        displayFilteredProjects(allProjects);
+    } catch (error) {
+        console.error('Failed to load projects:', error);
+        showNotification('Failed to load projects', 'error');
+    }
+}
+
+function toggleMyWorkFilter() {
+    const isFiltered = document.getElementById('myWorkFilter').checked;
+    
+    if (isFiltered && !currentUserId) {
+        showNotification('Please select a user first', 'error');
+        document.getElementById('myWorkFilter').checked = false;
+        return;
+    }
+    
     loadAllProjectsWithTasks();
 }
+
+function displayFilteredProjects(allProjects) {
+    const container = document.getElementById('allProjectsList');
+    const filterCheckbox = document.getElementById('myWorkFilter');
+    const isFiltered = filterCheckbox ? filterCheckbox.checked : false;
+    
+    let projectsToShow = allProjects;
+    
+    // Filter projects if "My Work" is checked
+    if (isFiltered && currentUserId) {
+        projectsToShow = allProjects.filter(project => {
+            if (!project.all_tasks) return false;
+            
+            // Check if any task in this project is assigned to current user
+            return project.all_tasks.some(task => {
+                if (task.assignees && task.assignees.length > 0) {
+                    return task.assignees.some(a => a.user_id === currentUserId);
+                }
+                return false;
+            });
+        });
+    }
+    
+    if (projectsToShow.length === 0) {
+        if (isFiltered) {
+            container.innerHTML = '<p style="color: #7f8c8d;">No projects with tasks assigned to you</p>';
+        } else {
+            container.innerHTML = '<p style="color: #7f8c8d;">No projects yet. Create one to get started!</p>';
+        }
+        return;
+    }
+    
+    container.innerHTML = projectsToShow.map(project => {
+        // Calculate task stats
+        let myTaskCount = project.task_count;
+        let taskStats = project.task_stats || { starting: 0, in_progress: 0, ongoing: 0, done: 0 };
+        
+        if (isFiltered && currentUserId && project.all_tasks) {
+            // Filter tasks assigned to me
+            const myTasks = project.all_tasks.filter(task => {
+                if (task.assignees && task.assignees.length > 0) {
+                    return task.assignees.some(a => a.user_id === currentUserId);
+                }
+                return false;
+            });
+            
+            myTaskCount = myTasks.length;
+            taskStats = {
+                starting: myTasks.filter(t => t.status === 'starting').length,
+                in_progress: myTasks.filter(t => t.status === 'in_progress').length,
+                ongoing: myTasks.filter(t => t.status === 'ongoing').length,
+                done: myTasks.filter(t => t.status === 'done').length
+            };
+        }
+        
+        return `
+        <div class="project-card status-${project.status}" onclick="selectProject(${project.id})">
+            <div class="project-status-badge">${formatProjectStatus(project.status)}</div>
+            <h3>${escapeHtml(project.name)}</h3>
+            <p>${escapeHtml(project.description || 'No description')}</p>
+            <div class="task-count">
+                📋 ${myTaskCount} task${myTaskCount !== 1 ? 's' : ''}${isFiltered ? ' (assigned to you)' : ''}
+                ${taskStats ? `
+                    <br><small>
+                        ✅ ${taskStats.done} | 
+                        ⚡ ${taskStats.in_progress} | 
+                        🔄 ${taskStats.ongoing} | 
+                        🚀 ${taskStats.starting}
+                    </small>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    }).join('');
+}
+
 async function handleProjectSubmit(e) {
     e.preventDefault();
     
@@ -501,6 +463,7 @@ function selectProject(projectId) {
     
     document.getElementById('dashboardBtn').classList.remove('active');
     document.getElementById('projectsBtn').classList.remove('active');
+    document.getElementById('myWorkBtn').classList.remove('active');
     
     // Show project status
     const statusBadges = document.getElementById('projectStatusBadges');
@@ -692,7 +655,7 @@ async function showTaskDetail(taskId) {
                 assigneesSection += `
                     <div class="assignee-chip" style="background: ${assignment.user_color}">
                         ${escapeHtml(assignment.username)}
-                        <button onclick="removeAssignee(${assignment.id}, ${taskId})">×</button>
+                        <button onclick="event.stopPropagation(); removeAssignee(${assignment.id}, ${taskId})">×</button>
                     </div>
                 `;
             });
@@ -790,7 +753,7 @@ async function showTaskDetail(taskId) {
                                         ${formatDate(img.created_at)}
                                     </span>
                                 </div>
-                                <button class="btn-icon-delete" onclick="deleteImage(${img.id}, ${task.id})" title="Delete image">
+                                <button class="btn-icon-delete" onclick="event.stopPropagation(); deleteImage(${img.id}, ${task.id})" title="Delete image">
                                     🗑️
                                 </button>
                             </div>
@@ -837,6 +800,7 @@ async function showTaskDetail(taskId) {
         showModal('taskDetailModal');
     } catch (error) {
         showNotification('Failed to load task details', 'error');
+        console.error(error);
     }
 }
 
@@ -1067,7 +1031,6 @@ function closeModal(modalId) {
 }
 
 function showNotification(message, type = 'info') {
-    // Simple notification system
     const notification = document.createElement('div');
     notification.style.cssText = `
         position: fixed;
@@ -1131,12 +1094,4 @@ window.onclick = function(event) {
     if (event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
     }
-}
-function showMyWorkQuick() {
-    showProjectsPage();
-    document.getElementById('myWorkFilter').checked = true;
-    toggleMyWorkFilter();
-    
-    document.getElementById('projectsBtn').classList.remove('active');
-    document.getElementById('myWorkBtn').classList.add('active');
 }
