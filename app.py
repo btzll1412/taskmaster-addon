@@ -205,14 +205,18 @@ def handle_user(user_id):
         for project in projects_to_reassign:
             project.created_by = other_user.id
         
-        # Remove task assignments
+       # Remove task assignments
         TaskAssignment.query.filter_by(user_id=user_id).delete()
         
-        # Remove notes by this user
-        Note.query.filter_by(user_id=user_id).delete()
+        # Keep notes but reassign to other user
+        notes_to_reassign = Note.query.filter_by(user_id=user_id).all()
+        for note in notes_to_reassign:
+            note.user_id = other_user.id
         
-        # Remove images uploaded by this user
-        TaskImage.query.filter_by(user_id=user_id).delete()
+        # Keep images but reassign to other user
+        images_to_reassign = TaskImage.query.filter_by(user_id=user_id).all()
+        for image in images_to_reassign:
+            image.user_id = other_user.id
         
         db.session.delete(user)
         db.session.commit()
