@@ -180,25 +180,52 @@ def handle_user(user_id):
     user = User.query.get_or_404(user_id)
     
     if request.method == 'DELETE':
-        # Check if user has tasks or projects
-        task_count = Task.query.filter_by(created_by=user_id).count()
-        project_count = Project.query.filter_by(created_by=user_id).count()
-        assignment_count = TaskAssignment.query.filter_by(user_id=user_id).count()
-        
-        if task_count > 0 or project_count > 0:
+        # Check if this is the only user
+        total_users = User.query.count()
+        if total_users <= 1:
             return jsonify({
-                'error': f'Cannot delete user. User has {task_count} tasks and {project_count} projects. Reassign them first.'
+                'error': 'Cannot delete the only user in the system.'
             }), 400
+        
+        # Find another user to reassign to
+        other_user = User.query.filter(User.id != user_id).first()
+        
+        if not other_user:
+            return jsonify({
+                'error': 'Cannot delete user. No other users available for reassignment.'
+            }), 400
+        
+        # Reassign all tasks created by this user
+        tasks_to_reassign = Task.query.filter_by(created_by=user_id).all()
+        for task in tasks_to_reassign:
+            task.created_by = other_user.id
+        
+        # Reassign all projects created by this user
+        projects_to_reassign = Project.query.filter_by(created_by=user_id).all()
+        for project in projects_to_reassign:
+            project.created_by = other_user.id
         
         # Remove task assignments
         TaskAssignment.query.filter_by(user_id=user_id).delete()
         
+        # Remove notes by this user
+        Note.query.filter_by(user_id=user_id).delete()
+        
+        # Remove images uploaded by this user
+        TaskImage.query.filter_by(user_id=user_id).delete()
+        
         db.session.delete(user)
         db.session.commit()
         
-        fire_event('taskmaster_user_deleted', {'user_id': user_id, 'username': user.username})
+        fire_event('taskmaster_user_deleted', {
+            'user_id': user_id, 
+            'username': user.username,
+            'reassigned_to': other_user.display_name
+        })
         
-        return '', 204
+        return jsonify({
+            'message': f'User deleted. Tasks and projects reassigned to {other_user.display_name}'
+        }), 200
     
     if request.method == 'PUT':
         data = request.json
