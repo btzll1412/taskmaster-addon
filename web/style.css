@@ -933,3 +933,34 @@ label {
         width: 100%;
     }
 }
+
+
+/* Filter Toggle */
+.filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2c3e50;
+    transition: all 0.3s;
+}
+
+.filter-toggle:hover {
+    background: #ecf0f1;
+}
+
+.filter-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #56ab2f;
+}
+
+.filter-toggle input[type="checkbox"]:checked + span {
+    color: #56ab2f;
+}
