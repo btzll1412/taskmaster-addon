@@ -236,12 +236,27 @@ async function handleUserSubmit(e) {
 }
 
 async function deleteUser(userId) {
-    if (!confirm('Are you sure you want to delete this user?')) return;
+    if (!confirm('Are you sure you want to delete this user? Their tasks and projects will be reassigned to another user.')) return;
     
     try {
-        await apiCall(`/users/${userId}`, 'DELETE');
+        const response = await fetch(`${API_BASE}/users/${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json().catch(() => ({}));
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to delete user');
+        }
+        
+        closeModal('userModal');
         loadUsers();
-        showNotification('User deleted', 'success');
+        loadProjects(); // Reload projects since ownership changed
+        
+        showNotification(data.message || 'User deleted successfully', 'success');
     } catch (error) {
         showNotification(error.message || 'Failed to delete user', 'error');
     }
