@@ -69,13 +69,19 @@
         </div>
 
         <!-- Projects Page (All Projects) -->
-        <div id="projectsPage" class="projects-page" style="display: none;">
-            <div class="page-header">
-                <h2>All Projects</h2>
-                <button class="btn btn-primary" onclick="showModal('projectModal')">+ New Project</button>
-            </div>
-            <div id="allProjectsList" class="projects-grid"></div>
+<div id="projectsPage" class="projects-page" style="display: none;">
+    <div class="page-header">
+        <h2>All Projects</h2>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <label class="filter-toggle">
+                <input type="checkbox" id="myWorkFilter" onchange="toggleMyWorkFilter()">
+                <span>Show only my work</span>
+            </label>
+            <button class="btn btn-primary" onclick="showModal('projectModal')">+ New Project</button>
         </div>
+    </div>
+    <div id="allProjectsList" class="projects-grid"></div>
+</div>
 
         <!-- Tasks View (shown when project selected) -->
         <div id="tasksView" class="tasks-view" style="display: none;">
@@ -91,12 +97,7 @@
                 </div>
             </div>
 
-            <!-- My Work View -->
-<div id="myWorkView" class="tasks-view" style="display: none;">
-    <div class="tasks-header">
-        <h2>My Work</h2>
-        <div id="myWorkUserName" style="color: #7f8c8d;"></div>
-    </div>
+            
     
     <div class="stats-container">
         <div class="stat-card status-starting">
