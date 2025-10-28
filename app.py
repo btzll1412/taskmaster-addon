@@ -860,6 +860,157 @@ def update_task_stats():
     update_sensor('sensor.taskmaster_done_tasks', stats['done'], {})
     update_sensor('sensor.taskmaster_active_tasks', total - stats['done'], {})
 
+# API Routes - Tags
+@app.route('/api/tags', methods=['GET', 'POST'])
+def handle_tags():
+    """Get all tags or create a new tag"""
+    if request.method == 'POST':
+        data = request.json
+        
+        if not data.get('name'):
+            return jsonify({'error': 'Tag name is required'}), 400
+        
+        if not data.get('created_by'):
+            return jsonify({'error': 'created_by is required'}), 400
+        
+        # Check if tag already exists for this project (or globally)
+        project_id = data.get('project_id')
+        existing = Tag.query.filter_by(name=data['name'], project_id=project_id).first()
+        
+        if existing:
+            return jsonify({'error': 'Tag with this name already exists'}), 400
+        
+        tag = Tag(
+            name=data['name'],
+            color=data.get('color', '#3498db'),
+            project_id=project_id,
+            created_by=data['created_by']
+        )
+        
+        db.session.add(tag)
+        db.session.commit()
+        
+        log_activity(
+            data['created_by'],
+            'created',
+            'tag',
+            tag.id,
+            f"Created tag: {tag.name}"
+        )
+        
+        return jsonify({
+            'id': tag.id,
+            'name': tag.name,
+            'color': tag.color,
+            'project_id': tag.project_id,
+            'created_by': tag.created_by
+        }), 201
+    
+    # GET - Return all tags (optionally filtered by project)
+    project_id = request.args.get('project_id', type=int)
+    
+    if project_id:
+        # Get project-specific tags + global tags
+        tags = Tag.query.filter(
+            (Tag.project_id == project_id) | (Tag.project_id == None)
+        ).all()
+    else:
+        # Get all tags
+        tags = Tag.query.all()
+    
+    return jsonify([{
+        'id': t.id,
+        'name': t.name,
+        'color': t.color,
+        'project_id': t.project_id,
+        'is_global': t.project_id is None,
+        'created_by': t.created_by
+    } for t in tags])
+
+@app.route('/api/tags/<int:tag_id>', methods=['GET', 'DELETE'])
+def handle_tag(tag_id):
+    """Get or delete a specific tag"""
+    tag = Tag.query.get_or_404(tag_id)
+    
+    if request.method == 'DELETE':
+        # TaskTag relationships will be auto-deleted due to cascade
+        tag_name = tag.name
+        db.session.delete(tag)
+        db.session.commit()
+        
+        log_activity(
+            None,
+            'deleted',
+            'tag',
+            tag_id,
+            f"Deleted tag: {tag_name}"
+        )
+        
+        return '', 204
+    
+    return jsonify({
+        'id': tag.id,
+        'name': tag.name,
+        'color': tag.color,
+        'project_id': tag.project_id,
+        'is_global': tag.project_id is None
+    })
+
+@app.route('/api/tasks/<int:task_id>/tags', methods=['POST', 'DELETE'])
+def handle_task_tags(task_id):
+    """Add or remove tags from a task"""
+    task = Task.query.get_or_404(task_id)
+    
+    if request.method == 'POST':
+        data = request.json
+        tag_id = data.get('tag_id')
+        
+        if not tag_id:
+            return jsonify({'error': 'tag_id is required'}), 400
+        
+        tag = Tag.query.get_or_404(tag_id)
+        
+        # Check if already tagged
+        existing = TaskTag.query.filter_by(task_id=task_id, tag_id=tag_id).first()
+        if existing:
+            return jsonify({'error': 'Task already has this tag'}), 400
+        
+        task_tag = TaskTag(task_id=task_id, tag_id=tag_id)
+        db.session.add(task_tag)
+        db.session.commit()
+        
+        log_activity(
+            None,
+            'tagged',
+            'task',
+            task_id,
+            f"Added tag '{tag.name}' to task"
+        )
+        
+        return jsonify({
+            'id': task_tag.id,
+            'task_id': task_id,
+            'tag_id': tag_id,
+            'tag_name': tag.name,
+            'tag_color': tag.color
+        }), 201
+    
+    if request.method == 'DELETE':
+        tag_id = request.args.get('tag_id', type=int)
+        
+        if not tag_id:
+            return jsonify({'error': 'tag_id is required'}), 400
+        
+        task_tag = TaskTag.query.filter_by(task_id=task_id, tag_id=tag_id).first()
+        
+        if not task_tag:
+            return jsonify({'error': 'Tag not found on this task'}), 404
+        
+        db.session.delete(task_tag)
+        db.session.commit()
+        
+        return '', 204
+
 # Serve frontend
 @app.route('/')
 def index():
