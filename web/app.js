@@ -540,6 +540,8 @@ function selectProject(projectId) {
     
     loadTasks(projectId);
 }
+// Load available tags for the select
+        loadAvailableTagsForTask(task.id, task.project_id);
 
 function showProjectStatusModal() {
     showModal('projectStatusModal');
@@ -751,6 +753,48 @@ async function showTaskDetail(taskId) {
         let assigneesSection = '<div class="assignees-section">';
         assigneesSection += '<h4>👥 Assigned To</h4>';
         assigneesSection += '<div class="assignees-list">';
+        // Tags section
+        let tagsSection = '<div class="tags-section">';
+        tagsSection += '<h4>🏷️ Tags</h4>';
+        
+        // Display current tags
+        if (task.tags && task.tags.length > 0) {
+            tagsSection += '<div class="tags-container">';
+            task.tags.forEach(tag => {
+                tagsSection += `
+                    <span class="tag-pill" style="background: ${tag.color}">
+                        ${escapeHtml(tag.name)}
+                        <button class="remove-tag" onclick="event.stopPropagation(); removeTagFromTask(${task.id}, ${tag.id})">×</button>
+                    </span>
+                `;
+            });
+            tagsSection += '</div>';
+        } else {
+            tagsSection += '<p style="color: var(--text-secondary); font-size: 13px;">No tags yet</p>';
+        }
+        
+        // Add tag section
+        tagsSection += '<div class="create-tag-section">';
+        tagsSection += '<h5>Add Existing Tag</h5>';
+        tagsSection += '<div class="tag-management">';
+        tagsSection += `<select id="existingTagSelect"><option value="">Select a tag...</option></select>`;
+        tagsSection += `<button class="btn btn-secondary" onclick="addExistingTagToTask(${task.id})">Add Tag</button>`;
+        tagsSection += '</div>';
+        
+        // Create new tag
+        tagsSection += '<h5>Or Create New Tag</h5>';
+        tagsSection += '<div class="tag-scope-toggle">';
+        tagsSection += '<label><input type="radio" name="tagScope" value="global" checked> Global (all projects)</label>';
+        tagsSection += `<label><input type="radio" name="tagScope" value="project"> Project-specific</label>`;
+        tagsSection += '</div>';
+        tagsSection += '<div class="tag-management">';
+        tagsSection += '<input type="text" id="newTagName" placeholder="Tag name" maxlength="30">';
+        tagsSection += '<input type="color" id="newTagColor" value="#3498db">';
+        tagsSection += `<button class="btn btn-primary" onclick="createAndAddTag(${task.id})">Create & Add</button>`;
+        tagsSection += '</div>';
+        tagsSection += '</div>';
+        
+        tagsSection += '</div>';
         if (assignments.length > 0) {
             assignments.forEach(assignment => {
                 assigneesSection += `
@@ -1188,6 +1232,103 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Tag Management Functions
+async function loadAvailableTagsForTask(taskId, projectId) {
+    try {
+        // Get all tags for this project (includes global tags)
+        const allTags = await apiCall(`/tags?project_id=${projectId}`);
+        
+        // Get tags already on this task
+        const task = await apiCall(`/tasks/${taskId}`);
+        const taskTagIds = task.tags ? task.tags.map(t => t.id) : [];
+        
+        // Filter out tags already on the task
+        const availableTags = allTags.filter(t => !taskTagIds.includes(t.id));
+        
+        // Populate select dropdown
+        const select = document.getElementById('existingTagSelect');
+        if (select) {
+            select.innerHTML = '<option value="">Select a tag...</option>';
+            availableTags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag.id;
+                option.textContent = `${tag.name} ${tag.is_global ? '(Global)' : '(Project)'}`;
+                option.style.color = tag.color;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Failed to load tags:', error);
+    }
+}
+
+async function addExistingTagToTask(taskId) {
+    const tagId = document.getElementById('existingTagSelect').value;
+    
+    if (!tagId) {
+        showNotification('Please select a tag', 'error');
+        return;
+    }
+    
+    try {
+        await apiCall(`/tasks/${taskId}/tags`, 'POST', { tag_id: parseInt(tagId) });
+        showNotification('Tag added!', 'success');
+        showTaskDetail(taskId);
+        loadTasks(currentProjectId);
+    } catch (error) {
+        showNotification(error.message || 'Failed to add tag', 'error');
+    }
+}
+
+async function createAndAddTag(taskId) {
+    const name = document.getElementById('newTagName').value.trim();
+    const color = document.getElementById('newTagColor').value;
+    const scope = document.querySelector('input[name="tagScope"]:checked').value;
+    
+    if (!name) {
+        showNotification('Please enter a tag name', 'error');
+        return;
+    }
+    
+    if (!currentUserId) {
+        showNotification('Please select a user first', 'error');
+        return;
+    }
+    
+    try {
+        // Create the tag
+        const tag = await apiCall('/tags', 'POST', {
+            name: name,
+            color: color,
+            project_id: scope === 'project' ? currentProjectId : null,
+            created_by: currentUserId
+        });
+        
+        // Add tag to task
+        await apiCall(`/tasks/${taskId}/tags`, 'POST', { tag_id: tag.id });
+        
+        showNotification('Tag created and added!', 'success');
+        document.getElementById('newTagName').value = '';
+        showTaskDetail(taskId);
+        loadTasks(currentProjectId);
+    } catch (error) {
+        showNotification(error.message || 'Failed to create tag', 'error');
+    }
+}
+
+async function removeTagFromTask(taskId, tagId) {
+    if (!confirm('Remove this tag from the task?')) return;
+    
+    try {
+        await apiCall(`/tasks/${taskId}/tags?tag_id=${tagId}`, 'DELETE');
+        showNotification('Tag removed', 'success');
+        showTaskDetail(taskId);
+        loadTasks(currentProjectId);
+    } catch (error) {
+        showNotification('Failed to remove tag', 'error');
+    }
 }
 
 // Close modals when clicking outside
