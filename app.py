@@ -82,6 +82,7 @@ class Note(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class TaskImage(db.Model):
+    __tablename__ = 'task_images'
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.Integer, db.ForeignKey('task.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -92,9 +93,127 @@ class TaskImage(db.Model):
     file_size = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# Tags - Both global and project-specific
+class Tag(db.Model):
+    __tablename__ = 'tags'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    color = db.Column(db.String(7), nullable=False, default='#3498db')  # Hex color
+    project_id = db.Column(db.Integer, db.ForeignKey('project.id', ondelete='CASCADE'), nullable=True)  # NULL = global
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    project = db.relationship('Project', backref=db.backref('tags', lazy=True, cascade='all, delete-orphan'))
+    creator = db.relationship('User', foreign_keys=[created_by], backref=db.backref('created_tags', lazy=True))
+    
+    # Ensure unique tag names per project (or global)
+    __table_args__ = (
+        db.UniqueConstraint('name', 'project_id', name='unique_tag_per_project'),
+    )
+
+# Task-Tag relationship (many-to-many)
+class TaskTag(db.Model):
+    __tablename__ = 'task_tags'
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('task.id', ondelete='CASCADE'), nullable=False)
+    tag_id = db.Column(db.Integer, db.ForeignKey('tags.id', ondelete='CASCADE'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    task = db.relationship('Task', backref=db.backref('task_tags_rel', lazy=True, cascade='all, delete-orphan'))
+    tag = db.relationship('Tag', backref=db.backref('task_tags_rel', lazy=True, cascade='all, delete-orphan'))
+    
+    # Unique constraint - can't add same tag twice
+    __table_args__ = (
+        db.UniqueConstraint('task_id', 'tag_id', name='unique_task_tag'),
+    )
+
+# Subtasks/Checklist items
+class Subtask(db.Model):
+    __tablename__ = 'subtasks'
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('task.id', ondelete='CASCADE'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    completed = db.Column(db.Boolean, default=False)
+    position = db.Column(db.Integer, default=0)  # For ordering
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    task = db.relationship('Task', backref=db.backref('subtasks', lazy=True, cascade='all, delete-orphan', order_by='Subtask.position'))
+    creator = db.relationship('User', foreign_keys=[created_by], backref=db.backref('created_subtasks', lazy=True))
+
+# Activity Log - Track all changes
+class ActivityLog(db.Model):
+    __tablename__ = 'activity_log'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    action_type = db.Column(db.String(50), nullable=False)  # 'created', 'updated', 'deleted', 'commented', etc.
+    entity_type = db.Column(db.String(50), nullable=False)  # 'task', 'project', 'assignment', etc.
+    entity_id = db.Column(db.Integer, nullable=False)
+    old_value = db.Column(db.Text, nullable=True)
+    new_value = db.Column(db.Text, nullable=True)
+    description = db.Column(db.Text, nullable=False)  # Human-readable description
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('User', backref=db.backref('activities', lazy=True))
+    
+    # Index for faster queries
+    __table_args__ = (
+        db.Index('idx_activity_entity', 'entity_type', 'entity_id'),
+        db.Index('idx_activity_user', 'user_id'),
+        db.Index('idx_activity_created', 'created_at'),
+    )
+
+# Helper function to log activities
+def log_activity(user_id, action_type, entity_type, entity_id, description, old_value=None, new_value=None):
+    """
+    Log an activity to the activity log
+    
+    Args:
+        user_id: ID of user performing action
+        action_type: Type of action ('created', 'updated', 'deleted', 'assigned', etc.)
+        entity_type: Type of entity ('task', 'project', 'comment', etc.)
+        entity_id: ID of the entity
+        description: Human-readable description
+        old_value: Previous value (for updates)
+        new_value: New value (for updates)
+    """
+    try:
+        activity = ActivityLog(
+            user_id=user_id,
+            action_type=action_type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            old_value=old_value,
+            new_value=new_value,
+            description=description
+        )
+        db.session.add(activity)
+        db.session.commit()
+    except Exception as e:
+        print(f"Failed to log activity: {e}")
+        db.session.rollback()
+
+
 # Initialize database
 with app.app_context():
     db.create_all()
+    
+    # Create indexes for better performance
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(db.text('CREATE INDEX IF NOT EXISTS idx_task_tags_task ON task_tags(task_id)'))
+            conn.execute(db.text('CREATE INDEX IF NOT EXISTS idx_task_tags_tag ON task_tags(tag_id)'))
+            conn.execute(db.text('CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id)'))
+            conn.execute(db.text('CREATE INDEX IF NOT EXISTS idx_tags_project ON tags(project_id)'))
+            conn.commit()
+    except Exception as e:
+        print(f"Indexes might already exist: {e}")
+    
+    print("Database initialized with all tables and indexes")
 
 # Helper Functions
 def allowed_file(filename):
@@ -144,6 +263,7 @@ def update_sensor(entity_id, state, attributes=None):
                      headers=headers, json=data, timeout=5)
     except Exception as e:
         print(f"Failed to update sensor: {e}")
+
 
 # API Routes - Users
 @app.route('/api/users', methods=['GET', 'POST'])
@@ -641,6 +761,22 @@ def serialize_task(task):
                 'color': user.color
             })
     
+    # Get tags
+    task_tag_relations = TaskTag.query.filter_by(task_id=task.id).all()
+    tags = []
+    for relation in task_tag_relations:
+        tag = Tag.query.get(relation.tag_id)
+        if tag:
+            tags.append({
+                'id': tag.id,
+                'name': tag.name,
+                'color': tag.color
+            })
+    
+    # Get subtask stats
+    subtasks = Subtask.query.filter_by(task_id=task.id).all()
+    completed_subtasks = sum(1 for s in subtasks if s.completed)
+    
     return {
         'id': task.id,
         'project_id': task.project_id,
@@ -651,7 +787,10 @@ def serialize_task(task):
         'assigned_to': task.assigned_to,
         'assignee_name': assignee.display_name if assignee else None,
         'assignee_color': assignee.color if assignee else None,
-        'assignees': assignees,  # NEW - multiple assignees
+        'assignees': assignees,
+        'tags': tags,
+        'subtask_count': len(subtasks),
+        'completed_subtasks': completed_subtasks,
         'created_by': task.created_by,
         'creator_name': creator.display_name if creator else 'Unknown',
         'created_at': task.created_at.isoformat(),
@@ -662,7 +801,6 @@ def serialize_task(task):
         'note_count': Note.query.filter_by(task_id=task.id).count(),
         'image_count': TaskImage.query.filter_by(task_id=task.id).count()
     }
-
 def serialize_note(note):
     user = User.query.get(note.user_id)
     return {
