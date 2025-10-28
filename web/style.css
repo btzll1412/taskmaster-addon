@@ -1310,3 +1310,166 @@ label {
     color: #f39c12;
     font-weight: bold;
 }
+
+/* Tags System */
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 11px;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tag-pill:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+}
+
+.tag-pill .remove-tag {
+    background: rgba(255,255,255,0.3);
+    border: none;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    font-size: 10px;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin-left: 3px;
+}
+
+.tag-pill .remove-tag:hover {
+    background: rgba(255,255,255,0.5);
+}
+
+.tags-section {
+    margin-top: 20px;
+    padding: 15px;
+    background: var(--input-bg);
+    border-radius: 8px;
+}
+
+.tags-section h4 {
+    color: var(--text-primary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tag-management {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.tag-management input {
+    flex: 1;
+}
+
+.tag-management input[type="color"] {
+    width: 60px;
+    height: 38px;
+    padding: 2px;
+}
+
+.available-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px;
+    background: var(--card-bg);
+    border-radius: 8px;
+    min-height: 50px;
+}
+
+.available-tags.empty {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tag-filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 15px;
+    background: var(--input-bg);
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.tag-filter-bar .tag-pill {
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.tag-filter-bar .tag-pill.active {
+    opacity: 1;
+    box-shadow: 0 0 0 3px rgba(86, 171, 47, 0.3);
+}
+
+.tag-filter-bar .clear-filters {
+    padding: 5px 12px;
+    background: var(--border-color);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 15px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.tag-filter-bar .clear-filters:hover {
+    background: var(--text-secondary);
+    color: white;
+}
+
+.create-tag-section {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 2px solid var(--border-color);
+}
+
+.create-tag-section h5 {
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+.tag-scope-toggle {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.tag-scope-toggle label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    padding: 5px 10px;
+    background: var(--input-bg);
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.tag-scope-toggle input[type="radio"] {
+    cursor: pointer;
+}
