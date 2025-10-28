@@ -611,16 +611,52 @@ function displayTasks(tasks) {
         return;
     }
     
+    const now = new Date();
+    
     container.innerHTML = tasks.map(task => {
+        // Calculate due date status
+        let dueStatus = 'no-deadline';
+        let dueDateLabel = '';
+        let dueClass = '';
+        
+        if (task.estimated_completion && task.status !== 'done') {
+            const estDate = new Date(task.estimated_completion);
+            const diffMs = estDate - now;
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            
+            if (diffMs < 0) {
+                // Overdue
+                dueStatus = 'overdue';
+                dueClass = 'overdue';
+                const daysOverdue = Math.abs(Math.floor(diffHours / 24));
+                dueDateLabel = `🚨 OVERDUE by ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''}`;
+            } else if (diffHours < 48) {
+                // Due soon (within 48 hours)
+                dueStatus = 'due-soon';
+                dueClass = 'due-soon';
+                if (diffHours < 24) {
+                    dueDateLabel = `⚠️ Due in ${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+                } else {
+                    const daysLeft = Math.floor(diffHours / 24);
+                    dueDateLabel = `⚠️ Due in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
+                }
+            } else {
+                // On track
+                dueStatus = 'on-track';
+                dueClass = 'on-track';
+                const daysLeft = Math.floor(diffHours / 24);
+                dueDateLabel = `✓ ${daysLeft} days left`;
+            }
+        }
+        
         let timeInfo = '';
         if (task.started_at) {
             timeInfo += `<span>⏱️ Started: ${formatDate(task.started_at)}</span>`;
         }
         if (task.estimated_completion) {
             const estDate = new Date(task.estimated_completion);
-            const now = new Date();
             const isOverdue = estDate < now && task.status !== 'done';
-            timeInfo += `<span style="${isOverdue ? 'color: #e74c3c; font-weight: bold;' : ''}">📅 Est: ${formatDate(task.estimated_completion)}</span>`;
+            timeInfo += `<span class="${isOverdue ? 'overdue-text' : task.status !== 'done' && estDate - now < 48 * 60 * 60 * 1000 ? 'due-soon-text' : ''}">📅 Est: ${formatDate(task.estimated_completion)}</span>`;
         }
         if (task.completed_at) {
             timeInfo += `<span>✅ Done: ${formatDate(task.completed_at)}</span>`;
@@ -649,7 +685,7 @@ function displayTasks(tasks) {
         }
         
         return `
-        <div class="task-card status-${task.status}" onclick="showTaskDetail(${task.id})">
+        <div class="task-card status-${task.status} ${dueClass}" onclick="showTaskDetail(${task.id})">
             <div class="task-info">
                 <div class="task-title">${escapeHtml(task.title)}</div>
                 <div class="task-meta">
@@ -661,6 +697,7 @@ function displayTasks(tasks) {
                     <span>📷 ${task.image_count} images</span>
                 </div>
                 ${timeInfo ? `<div class="task-meta" style="margin-top: 5px;">${timeInfo}</div>` : ''}
+                ${dueDateLabel ? `<div class="due-date-indicator ${dueStatus}">${dueDateLabel}</div>` : ''}
             </div>
             <div>
                 <span class="status-badge status-${task.status}">
@@ -671,7 +708,6 @@ function displayTasks(tasks) {
     `;
     }).join('');
 }
-
 async function showTaskDetail(taskId) {
     try {
         const task = await apiCall(`/tasks/${taskId}`);
