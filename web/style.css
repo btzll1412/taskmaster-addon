@@ -1241,3 +1241,72 @@ label {
 .filter-toggle input[type="checkbox"]:checked + span {
     color: #56ab2f;
 }
+
+/* Due Date Visual Alerts */
+.task-card.overdue {
+    border-left-width: 8px;
+    border-left-color: #e74c3c !important;
+    background: linear-gradient(90deg, rgba(231, 76, 60, 0.1) 0%, var(--input-bg) 10%);
+}
+
+.task-card.due-soon {
+    border-left-width: 8px;
+    border-left-color: #f39c12 !important;
+    background: linear-gradient(90deg, rgba(243, 156, 18, 0.1) 0%, var(--input-bg) 10%);
+}
+
+.task-card.on-track {
+    border-left-width: 5px;
+}
+
+.due-date-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 5px;
+}
+
+.due-date-indicator.overdue {
+    background: #e74c3c;
+    color: white;
+    animation: pulse 2s infinite;
+}
+
+.due-date-indicator.due-soon {
+    background: #f39c12;
+    color: white;
+}
+
+.due-date-indicator.on-track {
+    background: #27ae60;
+    color: white;
+}
+
+.due-date-indicator.no-deadline {
+    background: var(--border-color);
+    color: var(--text-secondary);
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Due date in task meta */
+.task-meta .overdue-text {
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+.task-meta .due-soon-text {
+    color: #f39c12;
+    font-weight: bold;
+}
