@@ -9,8 +9,58 @@ let users = [];
 let projects = [];
 let currentView = 'dashboard';
 
+// Dark Mode Management
+function initDarkMode() {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    // Apply saved theme or system preference
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        document.body.classList.add('dark-mode');
+        updateThemeToggle(true);
+    } else {
+        document.body.classList.remove('dark-mode');
+        updateThemeToggle(false);
+    }
+    
+    // Remove loading class if present
+    document.documentElement.classList.remove('dark-mode-loading');
+}
+
+function toggleDarkMode() {
+    const isDark = document.body.classList.toggle('dark-mode');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    updateThemeToggle(isDark);
+}
+
+function updateThemeToggle(isDark) {
+    const toggle = document.getElementById('themeToggle');
+    if (toggle) {
+        toggle.textContent = isDark ? '☀️' : '🌙';
+        toggle.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+    }
+}
+
+// Listen for system theme changes
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    const savedTheme = localStorage.getItem('theme');
+    if (!savedTheme) {
+        // Only auto-switch if user hasn't set preference
+        if (e.matches) {
+            document.body.classList.add('dark-mode');
+            updateThemeToggle(true);
+        } else {
+            document.body.classList.remove('dark-mode');
+            updateThemeToggle(false);
+        }
+    }
+});
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize dark mode first
+    initDarkMode();
+    
     loadUsers();
     loadProjects();
     
