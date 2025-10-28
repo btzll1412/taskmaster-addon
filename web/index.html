@@ -6,6 +6,17 @@
     <title>TaskMaster - Collaborative Task Management</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
     <link rel="stylesheet" href="style.css">
+    <script>
+        // Apply dark mode immediately before page renders to prevent flash
+        (function() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.classList.add('dark-mode-loading');
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="container">
@@ -21,6 +32,9 @@
             <button class="btn btn-nav" onclick="showDashboard()" id="dashboardBtn">Dashboard</button>
             <button class="btn btn-nav" onclick="showProjectsPage()" id="projectsBtn">Projects</button>
             <button class="btn btn-nav" onclick="showMyWorkQuick()" id="myWorkBtn">My Work</button>
+            <button class="theme-toggle" onclick="toggleDarkMode()" id="themeToggle" title="Toggle dark mode">
+                🌙
+            </button>
             <select id="currentUser" class="user-select">
                 <option value="">Select User</option>
             </select>
