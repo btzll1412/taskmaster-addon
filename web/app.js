@@ -8,6 +8,14 @@ let currentProject = null;
 let users = [];
 let projects = [];
 let currentView = 'dashboard';
+let allTasks = []; // Store all tasks for filtering
+let activeFilters = {
+    search: '',
+    status: '',
+    priority: '',
+    assignee: '',
+    tags: []
+};
 
 // Dark Mode Management
 function initDarkMode() {
@@ -584,7 +592,9 @@ function formatProjectStatus(status) {
 async function loadTasks(projectId) {
     try {
         const tasks = await apiCall(`/projects/${projectId}/tasks`);
-        displayTasks(tasks);
+        allTasks = tasks; // Store all tasks
+        loadFilterOptions(); // Load filter dropdowns
+        applyFilters(); // Apply any active filters
         updateProjectTaskStats(tasks);
     } catch (error) {
         console.error('Failed to load tasks:', error);
@@ -1469,6 +1479,175 @@ function formatDateDetailed(dateString) {
 }
 
 
+// Search and Filter Functions
+function loadFilterOptions() {
+    // Load assignees into filter dropdown
+    const filterAssignee = document.getElementById('filterAssignee');
+    if (!filterAssignee) return;
+    
+    // Keep first two options (All Assignees, Unassigned)
+    filterAssignee.innerHTML = `
+        <option value="">All Assignees</option>
+        <option value="unassigned">Unassigned</option>
+    `;
+    
+    // Add each user
+    users.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user.id;
+        option.textContent = user.display_name;
+        filterAssignee.appendChild(option);
+    });
+    
+    // Load tags for filtering
+    loadTagFilters();
+}
+
+async function loadTagFilters() {
+    if (!currentProjectId) return;
+    
+    try {
+        const tags = await apiCall(`/tags?project_id=${currentProjectId}`);
+        const container = document.getElementById('filterTagsContainer');
+        if (!container) return;
+        
+        if (tags.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        container.innerHTML = tags.map(tag => `
+            <span class="filter-tag" style="background: ${tag.color}" onclick="toggleTagFilter(${tag.id})">
+                ${escapeHtml(tag.name)}
+            </span>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load tag filters:', error);
+    }
+}
+
+function toggleTagFilter(tagId) {
+    const index = activeFilters.tags.indexOf(tagId);
+    if (index > -1) {
+        activeFilters.tags.splice(index, 1);
+    } else {
+        activeFilters.tags.push(tagId);
+    }
+    
+    // Update visual state
+    const tagElements = document.querySelectorAll('.filter-tag');
+    tagElements.forEach(el => {
+        const clickHandler = el.getAttribute('onclick');
+        const id = parseInt(clickHandler.match(/\d+/)[0]);
+        if (activeFilters.tags.includes(id)) {
+            el.classList.add('active');
+        } else {
+            el.classList.remove('active');
+        }
+    });
+    
+    applyFilters();
+}
+
+function applyFilters() {
+    // Get filter values
+    const searchInput = document.getElementById('taskSearch');
+    const statusFilter = document.getElementById('filterStatus');
+    const priorityFilter = document.getElementById('filterPriority');
+    const assigneeFilter = document.getElementById('filterAssignee');
+    
+    if (!searchInput || !statusFilter || !priorityFilter || !assigneeFilter) {
+        // Filters not loaded yet
+        displayTasks(allTasks);
+        return;
+    }
+    
+    activeFilters.search = searchInput.value.toLowerCase();
+    activeFilters.status = statusFilter.value;
+    activeFilters.priority = priorityFilter.value;
+    activeFilters.assignee = assigneeFilter.value;
+    
+    // Filter tasks
+    let filteredTasks = allTasks.filter(task => {
+        // Search filter
+        if (activeFilters.search) {
+            const searchText = (task.title + ' ' + (task.description || '')).toLowerCase();
+            if (!searchText.includes(activeFilters.search)) {
+                return false;
+            }
+        }
+        
+        // Status filter
+        if (activeFilters.status && task.status !== activeFilters.status) {
+            return false;
+        }
+        
+        // Priority filter
+        if (activeFilters.priority && task.priority !== activeFilters.priority) {
+            return false;
+        }
+        
+        // Assignee filter
+        if (activeFilters.assignee) {
+            if (activeFilters.assignee === 'unassigned') {
+                if (task.assignees && task.assignees.length > 0) {
+                    return false;
+                }
+            } else {
+                const assigneeId = parseInt(activeFilters.assignee);
+                if (!task.assignees || !task.assignees.some(a => a.user_id === assigneeId)) {
+                    return false;
+                }
+            }
+        }
+        
+        // Tag filter
+        if (activeFilters.tags.length > 0) {
+            if (!task.tags || !task.tags.some(t => activeFilters.tags.includes(t.id))) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+    
+    // Display filtered tasks
+    displayTasks(filteredTasks);
+    
+    // Show results info
+    showSearchResults(filteredTasks.length, allTasks.length);
+}
+
+function showSearchResults(filtered, total) {
+    const container = document.getElementById('tasksList');
+    
+    // Check if filters are active
+    const hasActiveFilters = activeFilters.search || activeFilters.status || 
+                            activeFilters.priority || activeFilters.assignee || 
+                            activeFilters.tags.length > 0;
+    
+    if (hasActiveFilters && filtered !== total) {
+        const info = document.createElement('div');
+        info.className = 'search-results-info';
+        info.innerHTML = `Showing <strong>${filtered}</strong> of <strong>${total}</strong> tasks`;
+        container.insertBefore(info, container.firstChild);
+    }
+}
+
+function clearFilters() {
+    // Reset filter values
+    document.getElementById('taskSearch').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterPriority').value = '';
+    document.getElementById('filterAssignee').value = '';
+    
+    // Clear tag filters
+    activeFilters.tags = [];
+    document.querySelectorAll('.filter-tag').forEach(el => el.classList.remove('active'));
+    
+    // Reapply (will show all)
+    applyFilters();
+}
 
 
 // Close modals when clicking outside
