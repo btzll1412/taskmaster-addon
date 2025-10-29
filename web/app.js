@@ -1508,6 +1508,22 @@ async function loadTagFilters() {
     
     try {
         const tags = await apiCall(`/tags?project_id=${currentProjectId}`);
+        
+        // Populate tag dropdown
+        const tagSelect = document.getElementById('filterTag');
+        if (tagSelect) {
+            tagSelect.innerHTML = '<option value="">All Tags</option>';
+            tags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag.id;
+                option.textContent = `${tag.name} ${tag.is_global ? '(Global)' : '(Project)'}`;
+                option.style.color = tag.color;
+                option.style.fontWeight = '600';
+                tagSelect.appendChild(option);
+            });
+        }
+        
+        // Also keep the visual tag pills
         const container = document.getElementById('filterTagsContainer');
         if (!container) return;
         
@@ -1527,11 +1543,18 @@ async function loadTagFilters() {
 }
 
 function toggleTagFilter(tagId) {
+    // Clear dropdown when using pills
+    const tagSelect = document.getElementById('filterTag');
+    if (tagSelect) {
+        tagSelect.value = '';
+    }
+    
     const index = activeFilters.tags.indexOf(tagId);
     if (index > -1) {
         activeFilters.tags.splice(index, 1);
     } else {
-        activeFilters.tags.push(tagId);
+        // Only allow one tag at a time for simplicity
+        activeFilters.tags = [tagId];
     }
     
     // Update visual state
@@ -1566,6 +1589,14 @@ function applyFilters() {
     activeFilters.status = statusFilter.value;
     activeFilters.priority = priorityFilter.value;
     activeFilters.assignee = assigneeFilter.value;
+    
+    // Handle tag dropdown
+    const tagFilter = document.getElementById('filterTag');
+    const tagDropdownValue = tagFilter ? tagFilter.value : '';
+    if (tagDropdownValue) {
+        // If tag selected from dropdown, use it instead of pills
+        activeFilters.tags = [parseInt(tagDropdownValue)];
+    }
     
     // Filter tasks
     let filteredTasks = allTasks.filter(task => {
@@ -1640,6 +1671,7 @@ function clearFilters() {
     document.getElementById('filterStatus').value = '';
     document.getElementById('filterPriority').value = '';
     document.getElementById('filterAssignee').value = '';
+    document.getElementById('filterTag').value = '';
     
     // Clear tag filters
     activeFilters.tags = [];
@@ -1648,7 +1680,6 @@ function clearFilters() {
     // Reapply (will show all)
     applyFilters();
 }
-
 
 // Close modals when clicking outside
 window.onclick = function(event) {
