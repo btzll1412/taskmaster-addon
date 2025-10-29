@@ -1095,7 +1095,18 @@ async function handleTaskSubmit(e) {
         return;
     }
     
-    const estimatedCompletion = document.getElementById('taskEstimatedCompletion').value;
+    const dateType = document.querySelector('input[name="newTaskDateType"]:checked').value;
+    let estimatedCompletion;
+    
+    if (dateType === 'date') {
+        estimatedCompletion = document.getElementById('taskEstimatedCompletionDate').value;
+        // If date only, set time to end of day (23:59)
+        if (estimatedCompletion) {
+            estimatedCompletion = estimatedCompletion + 'T23:59:00';
+        }
+    } else {
+        estimatedCompletion = document.getElementById('taskEstimatedCompletionDateTime').value;
+    }
     
     // Get selected assignees (OPTIONAL)
     const selectedAssignees = [];
