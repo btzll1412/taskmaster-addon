@@ -726,9 +726,13 @@ async function showTaskDetail(taskId) {
         const images = await apiCall(`/tasks/${taskId}/images`);
         const assignments = await apiCall(`/tasks/${taskId}/assignments`);
         
+        // Get creator info
+        const creator = users.find(u => u.id === task.created_by);
+        const creatorName = creator ? creator.display_name : 'Unknown';
+        
         // Calculate time information
         let timeSection = '<div class="time-tracking">';
-        timeSection += `<p><strong>Created:</strong> ${formatDate(task.created_at)}</p>`;
+        timeSection += `<p><strong>Created by ${creatorName}:</strong> ${formatDateDetailed(task.created_at)}</p>`;
         if (task.started_at) {
             timeSection += `<p><strong>Started:</strong> ${formatDate(task.started_at)}</p>`;
         }
@@ -1429,6 +1433,34 @@ async function removeTagFromTask(taskId, tagId) {
         loadTasks(currentProjectId);
     } catch (error) {
         showNotification('Failed to remove tag', 'error');
+    }
+}
+
+function formatDateDetailed(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    
+    // Check if it's today
+    const isToday = date.toDateString() === now.toDateString();
+    
+    if (isToday) {
+        // Format as "Today at HH:MM AM/PM"
+        const hours = date.getHours();
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        return `Today at ${displayHours}:${minutes} ${ampm}`;
+    } else {
+        // Format as full date and time
+        const options = { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        };
+        return date.toLocaleString('en-US', options);
     }
 }
 
