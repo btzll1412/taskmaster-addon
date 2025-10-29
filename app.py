@@ -11,6 +11,9 @@ from werkzeug.utils import secure_filename
 from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__, static_folder='web', static_url_path='')
 CORS(app)
@@ -32,6 +35,128 @@ db = SQLAlchemy(app)
 # Home Assistant API configuration
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN', '')
 HA_URL = 'http://supervisor/core/api'
+
+# Email Helper
+class EmailHelper:
+    @staticmethod
+    def get_settings():
+        """Get email settings from database"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT setting_key, setting_value FROM system_settings")
+        settings = {row['setting_key']: row['setting_value'] for row in cursor.fetchall()}
+        conn.close()
+        return settings
+    
+    @staticmethod
+    def send_email(to_email, subject, body_html, task_id=None, user_id=None):
+        """Send an email notification"""
+        if not to_email:
+            return False, "No email address provided"
+        
+        settings = EmailHelper.get_settings()
+        
+        # Check if SMTP is configured
+        if not settings.get('smtp_server') or not settings.get('smtp_username'):
+            return False, "SMTP not configured"
+        
+        try:
+            # Create message
+            msg = MIMEMultipart('alternative')
+            msg['From'] = settings.get('email_from', 'noreply@taskmaster.com')
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            
+            # Attach HTML body
+            html_part = MIMEText(body_html, 'html')
+            msg.attach(html_part)
+            
+            # Connect to SMTP server
+            server = smtplib.SMTP(settings['smtp_server'], int(settings.get('smtp_port', 587)))
+            server.starttls()
+            server.login(settings['smtp_username'], settings['smtp_password'])
+            
+            # Send email
+            server.send_message(msg)
+            server.quit()
+            
+            # Log success
+            if user_id:
+                EmailHelper.log_notification(user_id, 'email_sent', task_id, 
+                                            f"Email sent: {subject}", True, None)
+            
+            return True, "Email sent successfully"
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Email error: {error_msg}")
+            
+            # Log failure
+            if user_id:
+                EmailHelper.log_notification(user_id, 'email_failed', task_id, 
+                                            f"Failed to send: {subject}", False, error_msg)
+            
+            return False, error_msg
+    
+    @staticmethod
+    def log_notification(user_id, notification_type, task_id, message, success, error_msg):
+        """Log notification attempt"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO notification_log 
+            (user_id, notification_type, task_id, message, sent_successfully, error_message)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, notification_type, task_id, message, success, error_msg))
+        conn.commit()
+        conn.close()
+    
+    @staticmethod
+    def create_task_email_html(task_title, task_url, message, action_by=None):
+        """Create HTML email template for task notifications"""
+        settings = EmailHelper.get_settings()
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: #56ab2f; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+                .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+                .button {{ 
+                    display: inline-block; 
+                    padding: 12px 30px; 
+                    background: #56ab2f; 
+                    color: white; 
+                    text-decoration: none; 
+                    border-radius: 6px; 
+                    margin: 20px 0;
+                }}
+                .footer {{ text-align: center; margin-top: 20px; color: #999; font-size: 12px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>📋 TaskMaster Notification</h1>
+                </div>
+                <div class="content">
+                    <h2>{task_title}</h2>
+                    <p>{message}</p>
+                    {f'<p><small>Action by: {action_by}</small></p>' if action_by else ''}
+                    <a href="{task_url}" class="button">View Task</a>
+                </div>
+                <div class="footer">
+                    <p>This is an automated notification from TaskMaster</p>
+                    <p>You can manage your notification preferences in your user settings</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return html
 
 # Database Models
 class User(db.Model):
