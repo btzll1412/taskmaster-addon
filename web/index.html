@@ -92,7 +92,7 @@
                 <input type="checkbox" id="myWorkFilter" onchange="toggleMyWorkFilter()">
                 <span>Show only my work</span>
             </label>
-            <button class="btn btn-primary" onclick="showProjectModalChecked()">+ New Project</button>
+            <button class="btn btn-primary" onclick="showModal('projectModal')">+ New Project</button>
         </div>
     </div>
     <div id="allProjectsList" class="projects-grid"></div>
@@ -108,7 +108,7 @@
                 </div>
                 <div class="tasks-header-actions">
                     <button class="btn btn-secondary" onclick="showProjectStatusModal()">Change Status</button>
-                    <button class="btn btn-primary" onclick="showTaskModalChecked()">+ Add Task</button>
+                    <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
                 </div>
             </div>
 
