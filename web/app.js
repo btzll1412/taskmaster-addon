@@ -880,6 +880,8 @@ async function showTaskDetail(taskId) {
                     
                     ${assigneesSection}
                     
+                    ${tagsSection}
+                    
                     <div class="time-update">
                         <label><strong>Update Estimated Completion:</strong></label>
                         <input type="datetime-local" id="updateEstimatedCompletion" value="${estCompletionValue}">
@@ -978,6 +980,9 @@ async function showTaskDetail(taskId) {
         document.getElementById('imageUpload').addEventListener('change', (e) => {
             uploadImages(taskId, e.target.files);
         });
+        
+        // Load available tags for the select
+        loadAvailableTagsForTask(task.id, task.project_id);
         
         showModal('taskDetailModal');
     } catch (error) {
