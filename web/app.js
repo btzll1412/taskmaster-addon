@@ -884,8 +884,17 @@ async function showTaskDetail(taskId) {
                     
                     <div class="time-update">
                         <label><strong>Update Estimated Completion:</strong></label>
-                        <input type="datetime-local" id="updateEstimatedCompletion" value="${estCompletionValue}">
-                        <button class="btn btn-secondary" onclick="updateTaskEstimation(${task.id})">
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                <input type="radio" name="dateType" value="date" checked onchange="document.getElementById('updateEstimatedCompletionDate').style.display='block'; document.getElementById('updateEstimatedCompletionDateTime').style.display='none';"> Date Only
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                <input type="radio" name="dateType" value="datetime" onchange="document.getElementById('updateEstimatedCompletionDate').style.display='none'; document.getElementById('updateEstimatedCompletionDateTime').style.display='block';"> Date & Time
+                            </label>
+                        </div>
+                        <input type="date" id="updateEstimatedCompletionDate" value="${task.estimated_completion ? new Date(task.estimated_completion).toISOString().split('T')[0] : ''}">
+                        <input type="datetime-local" id="updateEstimatedCompletionDateTime" value="${estCompletionValue}" style="display: none;">
+                        <button class="btn btn-secondary" onclick="updateTaskEstimation(${task.id})" style="margin-top: 10px;">
                             Update Estimation
                         </button>
                     </div>
@@ -1205,7 +1214,18 @@ async function deleteImage(imageId, taskId) {
 }
 
 async function updateTaskEstimation(taskId) {
-    const estimatedCompletion = document.getElementById('updateEstimatedCompletion').value;
+    const dateType = document.querySelector('input[name="dateType"]:checked').value;
+    let estimatedCompletion;
+    
+    if (dateType === 'date') {
+        estimatedCompletion = document.getElementById('updateEstimatedCompletionDate').value;
+        // If date only, set time to end of day (23:59)
+        if (estimatedCompletion) {
+            estimatedCompletion = estimatedCompletion + 'T23:59:00';
+        }
+    } else {
+        estimatedCompletion = document.getElementById('updateEstimatedCompletionDateTime').value;
+    }
     
     try {
         await apiCall(`/tasks/${taskId}`, 'PUT', {
