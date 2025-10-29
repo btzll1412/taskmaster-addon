@@ -132,10 +132,13 @@
                         <option value="low">🟢 Low</option>
                     </select>
                     <select id="filterAssignee" onchange="applyFilters()">
-                        <option value="">All Assignees</option>
-                        <option value="unassigned">Unassigned</option>
-                    </select>
-                    <div id="filterTagsContainer"></div>
+                    <option value="">All Assignees</option>
+                    <option value="unassigned">Unassigned</option>
+                </select>
+                <select id="filterTag" onchange="applyFilters()">
+                    <option value="">All Tags</option>
+                </select>
+                <div id="filterTagsContainer"></div>
                     <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 15px;">
                         Clear Filters
                     </button>
