@@ -1083,10 +1083,9 @@ async function deleteTask(taskId) {
 }
 
 function showTaskModal() {
-    if (!currentUserId) {
-        showNotification('Please select a user first', 'error');
-        return;
-    }
+    updateAssigneeCheckboxes();
+    showModal('taskModal');
+}
     updateAssigneeCheckboxes();
     showModal('taskModal');
 }
@@ -1464,6 +1463,25 @@ function formatDateDetailed(dateString) {
             hour12: true
         });
     }
+}
+
+
+
+function showProjectModalChecked() {
+    if (!currentUserId) {
+        showNotification('⚠️ Please select a user first', 'error');
+        return;
+    }
+    showModal('projectModal');
+}
+
+function showTaskModalChecked() {
+    if (!currentUserId) {
+        showNotification('⚠️ Please select a user first', 'error');
+        return;
+    }
+    updateAssigneeCheckboxes();
+    showModal('taskModal');
 }
 
 // Close modals when clicking outside
