@@ -233,8 +233,17 @@
                     <label>Assign To (Multiple)</label>
                     <div id="assigneeCheckboxes" class="checkbox-group"></div>
 
-                    <label>Estimated Completion Date/Time</label>
-                    <input type="datetime-local" id="taskEstimatedCompletion">
+                    <label>Estimated Completion Date (optional time)</label>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="newTaskDateType" value="date" checked onchange="document.getElementById('taskEstimatedCompletionDate').style.display='block'; document.getElementById('taskEstimatedCompletionDateTime').style.display='none';"> Date Only
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="newTaskDateType" value="datetime" onchange="document.getElementById('taskEstimatedCompletionDate').style.display='none'; document.getElementById('taskEstimatedCompletionDateTime').style.display='block';"> Date & Time
+                        </label>
+                    </div>
+                    <input type="date" id="taskEstimatedCompletionDate">
+                    <input type="datetime-local" id="taskEstimatedCompletionDateTime" style="display: none;">
 
                     <button type="submit" class="btn btn-primary">Create Task</button>
                 </form>
