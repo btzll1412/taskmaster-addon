@@ -1031,6 +1031,10 @@ async function removeAssignee(assignmentId, taskId) {
 }
 
 async function changeTaskStatus(taskId, newStatus) {
+    if (!currentUserId) {
+        showNotification('⚠️ Please select a user first', 'error');
+        return;
+    }
     try {
         await apiCall(`/tasks/${taskId}`, 'PUT', { status: newStatus });
         closeModal('taskDetailModal');
@@ -1042,6 +1046,10 @@ async function changeTaskStatus(taskId, newStatus) {
 }
 
 async function deleteTask(taskId) {
+    if (!currentUserId) {
+        showNotification('⚠️ Please select a user first', 'error');
+        return;
+    }
     if (!confirm('Are you sure you want to delete this task?')) {
         return;
     }
@@ -1203,6 +1211,10 @@ async function deleteImage(imageId, taskId) {
 }
 
 async function updateTaskEstimation(taskId) {
+    if (!currentUserId) {
+        showNotification('⚠️ Please select a user first', 'error');
+        return;
+    }
     const dateType = document.querySelector('input[name="dateType"]:checked').value;
     let estimatedCompletion;
     
@@ -1230,6 +1242,10 @@ async function updateTaskEstimation(taskId) {
 }
 
 async function updateTaskPriority(taskId) {
+    if (!currentUserId) {
+        showNotification('⚠️ Please select a user first', 'error');
+        return;
+    }
     const priority = document.getElementById('updatePriority').value;
     
     try {
@@ -1290,7 +1306,13 @@ function formatStatus(status) {
 }
 
 function formatDate(dateString) {
-    const date = new Date(dateString);
+    // If the date string doesn't have timezone info, assume it's UTC
+    let date;
+    if (!dateString.endsWith('Z') && !dateString.includes('+')) {
+        date = new Date(dateString + 'Z'); // Add Z to mark as UTC
+    } else {
+        date = new Date(dateString);
+    }
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
@@ -1411,8 +1433,14 @@ async function removeTagFromTask(taskId, tagId) {
 }
 
 function formatDateDetailed(dateString) {
-    // Create date object - JavaScript automatically handles timezone conversion
-    const date = new Date(dateString);
+    // If the date string doesn't have timezone info, assume it's UTC
+    let date;
+    if (!dateString.endsWith('Z') && !dateString.includes('+')) {
+        date = new Date(dateString + 'Z'); // Add Z to mark as UTC
+    } else {
+        date = new Date(dateString);
+    }
+    
     const now = new Date();
     
     // Compare dates only (ignore time) to check if today
