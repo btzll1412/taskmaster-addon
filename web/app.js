@@ -1437,21 +1437,22 @@ async function removeTagFromTask(taskId, tagId) {
 }
 
 function formatDateDetailed(dateString) {
+    // Parse the date string and convert to local timezone
     const date = new Date(dateString);
     const now = new Date();
     
-    // Check if it's today
-    const isToday = date.toDateString() === now.toDateString();
+    // Check if it's today (comparing in local timezone)
+    const isToday = date.toLocaleDateString() === now.toLocaleDateString();
     
     if (isToday) {
-        // Format as "Today at HH:MM AM/PM"
+        // Format as "Today at HH:MM AM/PM" in local time
         const hours = date.getHours();
         const minutes = date.getMinutes().toString().padStart(2, '0');
         const ampm = hours >= 12 ? 'PM' : 'AM';
         const displayHours = hours % 12 || 12;
         return `Today at ${displayHours}:${minutes} ${ampm}`;
     } else {
-        // Format as full date and time
+        // Format as full date and time in local timezone
         const options = { 
             year: 'numeric', 
             month: 'short', 
@@ -1460,7 +1461,7 @@ function formatDateDetailed(dateString) {
             minute: '2-digit',
             hour12: true
         };
-        return date.toLocaleString('en-US', options);
+        return date.toLocaleString(undefined, options); // undefined uses browser's locale
     }
 }
 
