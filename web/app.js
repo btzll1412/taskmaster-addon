@@ -836,33 +836,7 @@ async function showTaskDetail(taskId) {
         tagsSection += '</div>';
         
         tagsSection += '</div>';
-        if (assignments.length > 0) {
-            assignments.forEach(assignment => {
-                assigneesSection += `
-                    <div class="assignee-chip" style="background: ${assignment.user_color}">
-                        ${escapeHtml(assignment.username)}
-                        <button onclick="event.stopPropagation(); removeAssignee(${assignment.id}, ${taskId})">×</button>
-                    </div>
-                `;
-            });
-        } else {
-            assigneesSection += '<p style="color: #7f8c8d;">No one assigned yet</p>';
-        }
-        assigneesSection += '</div>';
         
-        // Add assignee form
-        assigneesSection += '<div class="add-assignee-form">';
-        assigneesSection += '<select id="newAssigneeSelect"><option value="">Select user to assign...</option>';
-        users.forEach(user => {
-            const alreadyAssigned = assignments.some(a => a.user_id === user.id);
-            if (!alreadyAssigned) {
-                assigneesSection += `<option value="${user.id}">${escapeHtml(user.display_name)}</option>`;
-            }
-        });
-        assigneesSection += '</select>';
-        assigneesSection += `<button class="btn btn-primary" onclick="addAssignee(${taskId})">Add</button>`;
-        assigneesSection += '</div>';
-        assigneesSection += '</div>';
         
         // Update estimated completion section
         const estCompletionValue = task.estimated_completion ? new Date(task.estimated_completion).toISOString().slice(0, 16) : '';
@@ -1087,9 +1061,6 @@ function showTaskModal() {
         showNotification('Please select a user first', 'error');
         return;
     }
-    updateAssigneeCheckboxes();
-    showModal('taskModal');
-}
     updateAssigneeCheckboxes();
     showModal('taskModal');
 }
