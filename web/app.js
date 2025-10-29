@@ -1522,55 +1522,11 @@ async function loadTagFilters() {
                 tagSelect.appendChild(option);
             });
         }
-        
-        // Also keep the visual tag pills
-        const container = document.getElementById('filterTagsContainer');
-        if (!container) return;
-        
-        if (tags.length === 0) {
-            container.innerHTML = '';
-            return;
-        }
-        
-        container.innerHTML = tags.map(tag => `
-            <span class="filter-tag" style="background: ${tag.color}" onclick="toggleTagFilter(${tag.id})">
-                ${escapeHtml(tag.name)}
-            </span>
-        `).join('');
     } catch (error) {
         console.error('Failed to load tag filters:', error);
     }
 }
 
-function toggleTagFilter(tagId) {
-    // Clear dropdown when using pills
-    const tagSelect = document.getElementById('filterTag');
-    if (tagSelect) {
-        tagSelect.value = '';
-    }
-    
-    const index = activeFilters.tags.indexOf(tagId);
-    if (index > -1) {
-        activeFilters.tags.splice(index, 1);
-    } else {
-        // Only allow one tag at a time for simplicity
-        activeFilters.tags = [tagId];
-    }
-    
-    // Update visual state
-    const tagElements = document.querySelectorAll('.filter-tag');
-    tagElements.forEach(el => {
-        const clickHandler = el.getAttribute('onclick');
-        const id = parseInt(clickHandler.match(/\d+/)[0]);
-        if (activeFilters.tags.includes(id)) {
-            el.classList.add('active');
-        } else {
-            el.classList.remove('active');
-        }
-    });
-    
-    applyFilters();
-}
 
 function applyFilters() {
     // Get filter values
@@ -1675,7 +1631,6 @@ function clearFilters() {
     
     // Clear tag filters
     activeFilters.tags = [];
-    document.querySelectorAll('.filter-tag').forEach(el => el.classList.remove('active'));
     
     // Reapply (will show all)
     applyFilters();
