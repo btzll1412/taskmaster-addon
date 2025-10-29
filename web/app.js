@@ -690,6 +690,15 @@ function displayTasks(tasks) {
         <div class="task-card status-${task.status} ${dueClass}" onclick="showTaskDetail(${task.id})">
             <div class="task-info">
                 <div class="task-title">${escapeHtml(task.title)}</div>
+                ${task.tags && task.tags.length > 0 ? `
+                    <div class="tags-container">
+                        ${task.tags.map(tag => `
+                            <span class="tag-pill" style="background: ${tag.color}" onclick="event.stopPropagation()">
+                                ${escapeHtml(tag.name)}
+                            </span>
+                        `).join('')}
+                    </div>
+                ` : ''}
                 <div class="task-meta">
                     <span class="priority-badge priority-${task.priority}">
                         ${task.priority.toUpperCase()}
@@ -753,6 +762,34 @@ async function showTaskDetail(taskId) {
         let assigneesSection = '<div class="assignees-section">';
         assigneesSection += '<h4>👥 Assigned To</h4>';
         assigneesSection += '<div class="assignees-list">';
+        if (assignments.length > 0) {
+            assignments.forEach(assignment => {
+                assigneesSection += `
+                    <div class="assignee-chip" style="background: ${assignment.user_color}">
+                        ${escapeHtml(assignment.username)}
+                        <button onclick="event.stopPropagation(); removeAssignee(${assignment.id}, ${taskId})">×</button>
+                    </div>
+                `;
+            });
+        } else {
+            assigneesSection += '<p style="color: #7f8c8d;">No one assigned yet</p>';
+        }
+        assigneesSection += '</div>';
+        
+        // Add assignee form
+        assigneesSection += '<div class="add-assignee-form">';
+        assigneesSection += '<select id="newAssigneeSelect"><option value="">Select user to assign...</option>';
+        users.forEach(user => {
+            const alreadyAssigned = assignments.some(a => a.user_id === user.id);
+            if (!alreadyAssigned) {
+                assigneesSection += `<option value="${user.id}">${escapeHtml(user.display_name)}</option>`;
+            }
+        });
+        assigneesSection += '</select>';
+        assigneesSection += `<button class="btn btn-primary" onclick="addAssignee(${taskId})">Add</button>`;
+        assigneesSection += '</div>';
+        assigneesSection += '</div>';
+        
         // Tags section
         let tagsSection = '<div class="tags-section">';
         tagsSection += '<h4>🏷️ Tags</h4>';
