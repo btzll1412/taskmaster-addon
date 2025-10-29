@@ -1437,31 +1437,32 @@ async function removeTagFromTask(taskId, tagId) {
 }
 
 function formatDateDetailed(dateString) {
-    // Parse the date string and convert to local timezone
+    // Create date object - JavaScript automatically handles timezone conversion
     const date = new Date(dateString);
     const now = new Date();
     
-    // Check if it's today (comparing in local timezone)
-    const isToday = date.toLocaleDateString() === now.toLocaleDateString();
+    // Compare dates only (ignore time) to check if today
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const isToday = todayStart.getTime() === dateStart.getTime();
     
     if (isToday) {
-        // Format as "Today at HH:MM AM/PM" in local time
-        const hours = date.getHours();
-        const minutes = date.getMinutes().toString().padStart(2, '0');
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        const displayHours = hours % 12 || 12;
-        return `Today at ${displayHours}:${minutes} ${ampm}`;
+        // Format as "Today at HH:MM AM/PM"
+        return `Today at ${date.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+        })}`;
     } else {
-        // Format as full date and time in local timezone
-        const options = { 
+        // Format as full date and time
+        return date.toLocaleString('en-US', { 
             year: 'numeric', 
             month: 'short', 
             day: 'numeric',
             hour: 'numeric',
             minute: '2-digit',
             hour12: true
-        };
-        return date.toLocaleString(undefined, options); // undefined uses browser's locale
+        });
     }
 }
 
