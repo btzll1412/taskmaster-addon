@@ -107,41 +107,41 @@
                     <div class="project-status-badges" id="projectStatusBadges"></div>
                 </div>
                 <div class="tasks-header-actions">
-                <button class="btn btn-secondary" onclick="showProjectStatusModal()">Change Status</button>
-                <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
+                    <button class="btn btn-secondary" onclick="showProjectStatusModal()">Change Status</button>
+                    <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
+                </div>
             </div>
-        </div>
 
-        <!-- Search and Filter Bar -->
-        <div class="search-filter-bar">
-            <div class="search-box">
-                <input type="text" id="taskSearch" placeholder="🔍 Search tasks..." oninput="applyFilters()">
+            <!-- Search and Filter Bar -->
+            <div class="search-filter-bar">
+                <div class="search-box">
+                    <input type="text" id="taskSearch" placeholder="🔍 Search tasks..." oninput="applyFilters()">
+                </div>
+                <div class="filter-controls">
+                    <select id="filterStatus" onchange="applyFilters()">
+                        <option value="">All Statuses</option>
+                        <option value="starting">🚀 Starting</option>
+                        <option value="in_progress">⚡ In Progress</option>
+                        <option value="ongoing">🔄 Ongoing</option>
+                        <option value="done">✅ Done</option>
+                    </select>
+                    <select id="filterPriority" onchange="applyFilters()">
+                        <option value="">All Priorities</option>
+                        <option value="high">🔴 High</option>
+                        <option value="medium">🟡 Medium</option>
+                        <option value="low">🟢 Low</option>
+                    </select>
+                    <select id="filterAssignee" onchange="applyFilters()">
+                        <option value="">All Assignees</option>
+                        <option value="unassigned">Unassigned</option>
+                    </select>
+                    <div id="filterTagsContainer"></div>
+                    <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 15px;">
+                        Clear Filters
+                    </button>
+                </div>
             </div>
-            <div class="filter-controls">
-                <select id="filterStatus" onchange="applyFilters()">
-                    <option value="">All Statuses</option>
-                    <option value="starting">🚀 Starting</option>
-                    <option value="in_progress">⚡ In Progress</option>
-                    <option value="ongoing">🔄 Ongoing</option>
-                    <option value="done">✅ Done</option>
-                </select>
-                <select id="filterPriority" onchange="applyFilters()">
-                    <option value="">All Priorities</option>
-                    <option value="high">🔴 High</option>
-                    <option value="medium">🟡 Medium</option>
-                    <option value="low">🟢 Low</option>
-                </select>
-                <select id="filterAssignee" onchange="applyFilters()">
-                    <option value="">All Assignees</option>
-                    <option value="unassigned">Unassigned</option>
-                </select>
-                <div id="filterTagsContainer"></div>
-                <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 15px;">
-                    Clear Filters
-                </button>
-            </div>
-        </div>
-            </div>
+            
 
 
             <!-- Task Stats for Current Project -->
