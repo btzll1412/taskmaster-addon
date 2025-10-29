@@ -889,6 +889,18 @@ async function showTaskDetail(taskId) {
                             Update Estimation
                         </button>
                     </div>
+
+                    <div class="time-update">
+                        <label><strong>Update Priority Level:</strong></label>
+                        <select id="updatePriority" style="width: 100%; padding: 12px; border: 2px solid var(--input-border); border-radius: 8px; margin-bottom: 10px;">
+                            <option value="low" ${task.priority === 'low' ? 'selected' : ''}>🟢 Low Priority</option>
+                            <option value="medium" ${task.priority === 'medium' ? 'selected' : ''}>🟡 Medium Priority</option>
+                            <option value="high" ${task.priority === 'high' ? 'selected' : ''}>🔴 High Priority</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="updateTaskPriority(${task.id})">
+                            Update Priority
+                        </button>
+                    </div>
                     
                     <div class="task-actions">
                         <button class="btn btn-primary" onclick="changeTaskStatus(${task.id}, 'starting')">
@@ -1205,6 +1217,22 @@ async function updateTaskEstimation(taskId) {
         showNotification('Estimation updated!', 'success');
     } catch (error) {
         showNotification('Failed to update estimation', 'error');
+    }
+}
+
+async function updateTaskPriority(taskId) {
+    const priority = document.getElementById('updatePriority').value;
+    
+    try {
+        await apiCall(`/tasks/${taskId}`, 'PUT', {
+            priority: priority
+        });
+        
+        showTaskDetail(taskId);
+        loadTasks(currentProjectId);
+        showNotification('Priority updated!', 'success');
+    } catch (error) {
+        showNotification('Failed to update priority', 'error');
     }
 }
 
