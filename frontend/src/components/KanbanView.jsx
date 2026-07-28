@@ -73,7 +73,7 @@ export default function KanbanView({ items }) {
               </div>
               <div className="lane-cards">
                 {laneList.map(item => (
-                  <KanbanCard key={item.id} item={item} users={users}
+                  <KanbanCard key={item.id} item={item} users={users} laneColor={lane.color}
                     peopleCol={peopleCol} dateCol={dateCol} prioCol={prioCol}
                     onOpen={() => openItem(item.id)} />
                 ))}
@@ -86,7 +86,7 @@ export default function KanbanView({ items }) {
   )
 }
 
-function KanbanCard({ item, users, peopleCol, dateCol, prioCol, onOpen }) {
+function KanbanCard({ item, users, laneColor, peopleCol, dateCol, prioCol, onOpen }) {
   const people = peopleCol ? (item.values[String(peopleCol.id)]?.user_ids || []) : []
   const assignees = users.filter(u => people.includes(u.id))
   const date = dateCol ? item.values[String(dateCol.id)]?.date : null
@@ -95,7 +95,7 @@ function KanbanCard({ item, users, peopleCol, dateCol, prioCol, onOpen }) {
     : null
 
   return (
-    <div className="kanban-card" draggable
+    <div className="kanban-card" style={{ '--lane-color': laneColor }} draggable
       onDragStart={e => e.dataTransfer.setData('text/item-id', String(item.id))}
       onClick={onOpen}>
       <div className="card-name">{item.name}</div>

@@ -4,12 +4,13 @@ import { useStore } from '../store'
 import { Avatar, Popover, Modal, timeAgo, useOutsideClose } from './ui'
 
 export default function TopBar() {
-  const { user, unread } = useStore()
+  const { user, unread, toggleSidebarMobile } = useStore()
   const [showNotif, setShowNotif] = useState(false)
   const [showUser, setShowUser] = useState(false)
 
   return (
     <header className="topbar">
+      <button className="icon-btn hamburger" onClick={toggleSidebarMobile} title="Menu">☰</button>
       <SearchBox />
       <div className="topbar-actions">
         <div className="topbar-anchor">
