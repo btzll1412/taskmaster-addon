@@ -38,19 +38,16 @@ def list_boards(user):
     return jsonify({'boards': out})
 
 
-@bp.post('/departments/<int:dept_id>/boards')
-@login_required
-def create_board(user, dept_id):
-    dept = Department.query.get_or_404(dept_id)
-    allowed = (perm.is_super(user)
-               or perm.can_manage_company(user, dept.company_id)
-               or any(g.scope_type == 'department' and g.scope_id == dept.id
-                      for g in perm.user_grants(user))
-               or any(g.scope_type == 'company' and g.scope_id == dept.company_id
-                      for g in perm.user_grants(user)))
-    if not allowed:
-        return jsonify({'error': 'No permission to create boards in this department'}), 403
-    data = request.json or {}
+def _can_create_in_company(user, company_id, dept_id=None):
+    return (perm.is_super(user)
+            or perm.can_manage_company(user, company_id)
+            or any(g.scope_type == 'company' and g.scope_id == company_id
+                   for g in perm.user_grants(user))
+            or (dept_id and any(g.scope_type == 'department' and g.scope_id == dept_id
+                                for g in perm.user_grants(user))))
+
+
+def _create_board(user, data, dept=None, company_id=None):
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Board name is required'}), 400
@@ -60,7 +57,8 @@ def create_board(user, dept_id):
         description=(data.get('description') or '').strip(),
         icon=data.get('icon') or '📋',
         color=data.get('color') or '#579bfc',
-        department_id=dept.id,
+        department_id=dept.id if dept else None,
+        company_id=None if dept else company_id,
         owner_id=user.id,
         position=max_pos + 1,
     )
@@ -71,6 +69,26 @@ def create_board(user, dept_id):
     db.session.commit()
     ha.fire_event('taskmaster_board_created', {'board_id': board.id, 'name': board.name})
     return jsonify(serialize_board_full(board)), 201
+
+
+@bp.post('/departments/<int:dept_id>/boards')
+@login_required
+def create_board(user, dept_id):
+    dept = Department.query.get_or_404(dept_id)
+    if not _can_create_in_company(user, dept.company_id, dept.id):
+        return jsonify({'error': 'No permission to create boards in this department'}), 403
+    return _create_board(user, request.json or {}, dept=dept)
+
+
+@bp.post('/companies/<int:company_id>/boards')
+@login_required
+def create_company_board(user, company_id):
+    """Board that lives directly under a company, outside any department."""
+    from ..models import Company
+    Company.query.get_or_404(company_id)
+    if not _can_create_in_company(user, company_id):
+        return jsonify({'error': 'No permission to create boards in this company'}), 403
+    return _create_board(user, request.json or {}, company_id=company_id)
 
 
 @bp.get('/boards/<int:board_id>')

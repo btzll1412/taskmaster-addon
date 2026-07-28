@@ -203,7 +203,7 @@ function GrantsModal({ target, onClose, showToast }) {
   const company = workspace.companies.find(c => c.id === Number(companyId))
   const departments = company?.departments || []
   const dept = departments.find(d => d.id === Number(deptId))
-  const boards = dept?.boards || []
+  const boards = deptId === 'direct' ? (company?.boards || []) : (dept?.boards || [])
 
   async function addGrant() {
     let scope_id = null
@@ -257,6 +257,7 @@ function GrantsModal({ target, onClose, showToast }) {
           {scopeType !== 'company' && (
             <select value={deptId} onChange={e => { setDeptId(e.target.value); setBoardId('') }} disabled={!companyId}>
               <option value="">Department…</option>
+              {scopeType === 'board' && <option value="direct">— Company jobs (no department) —</option>}
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           )}

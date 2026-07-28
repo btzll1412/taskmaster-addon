@@ -7,6 +7,9 @@ import HomeView from './views/HomeView'
 import BoardView from './views/BoardView'
 import MyWork from './views/MyWork'
 import AdminUsers from './views/AdminUsers'
+import CompanyPage from './views/CompanyPage'
+import DepartmentPage from './views/DepartmentPage'
+import { DepartmentsDirectory, ItemsDirectory } from './views/Directory'
 import ItemPanel from './components/ItemPanel'
 
 export default function App() {
@@ -30,6 +33,11 @@ export default function App() {
           {route.page === 'board' && <BoardView key={route.boardId} />}
           {route.page === 'mywork' && <MyWork />}
           {route.page === 'admin' && <AdminUsers />}
+          {route.page === 'company' && <CompanyPage key={route.companyId} />}
+          {route.page === 'department' && <DepartmentPage key={route.deptId} />}
+          {route.page === 'departments' && <DepartmentsDirectory />}
+          {route.page === 'jobs' && <ItemsDirectory kind="jobs" key="jobs" />}
+          {route.page === 'tasks' && <ItemsDirectory kind="tasks" key="tasks" />}
         </div>
       </div>
       {panelItemId && <ItemPanel itemId={panelItemId} />}
