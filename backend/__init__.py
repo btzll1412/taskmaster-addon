@@ -2,7 +2,7 @@
 import os
 import secrets
 
-from flask import Flask, send_from_directory
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from .config import DATA_DIR, WEB_DIST
@@ -54,6 +54,23 @@ def create_app():
 
     from .api import register_blueprints
     register_blueprints(app)
+
+    @app.before_request
+    def viewer_read_only_guard():
+        from flask import request
+        if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
+            return None
+        if not request.path.startswith('/api'):
+            return None
+        # viewers may still authenticate and manage their own session basics
+        for allowed in ('/api/auth/', '/api/notifications/read'):
+            if request.path.startswith(allowed):
+                return None
+        from .auth import current_user
+        u = current_user()
+        if u and u.role == 'viewer':
+            return jsonify({'error': 'Your role is view-only'}), 403
+        return None
 
     @app.route('/')
     def index():

@@ -5,15 +5,17 @@ import { Avatar, Modal } from '../components/ui'
 
 const ROLE_LABEL = {
   super_admin: 'Super admin',
+  admin: 'Admin (IT staff)',
   company_admin: 'Company admin',
   member: 'Member',
+  viewer: 'Viewer',
 }
 
 export default function AdminUsers() {
   const { user, route } = useStore()
   const [tab, setTab] = useState(
     route.tab === 'companies' && user.role === 'super_admin' ? 'companies' : 'users')
-  const isAdmin = user.role === 'super_admin' || user.role === 'company_admin'
+  const isAdmin = ['super_admin', 'admin', 'company_admin'].includes(user.role)
 
   if (!isAdmin) return <div className="muted">Admin access required.</div>
 
@@ -40,7 +42,9 @@ function UsersTab() {
 
   const canManage = (u) =>
     user.role === 'super_admin' ||
-    (user.role === 'company_admin' && u.company_id === user.company_id && u.role !== 'super_admin')
+    (['super_admin', 'admin'].includes(u.role) ? false
+      : user.role === 'admin' ? u.company_id != null
+        : user.role === 'company_admin' && u.company_id === user.company_id)
 
   async function toggleActive(u) {
     try {
@@ -77,12 +81,23 @@ function UsersTab() {
             {!u.has_password && <span className="pw-warning" title="Cannot sign in until a password is set">⚠️ No password</span>}
             {canManage(u) && u.id !== user.id ? (
               <select className="role-select" value={u.role} onChange={e => setRole(u, e.target.value)}>
-                <option value="member">Member</option>
-                <option value="company_admin">Company admin</option>
-                {user.role === 'super_admin' && <option value="super_admin">Super admin</option>}
+                {u.company_id ? (
+                  <>
+                    <option value="company_admin">Company admin</option>
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                  </>
+                ) : (
+                  <>
+                    {user.role === 'super_admin' && <option value="super_admin">Super admin</option>}
+                    {user.role === 'super_admin' && <option value="admin">Admin (IT staff)</option>}
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                  </>
+                )}
               </select>
             ) : (
-              <span className={`role-tag ${u.role}`}>{ROLE_LABEL[u.role] || u.role}</span>
+              <span className={`role-tag ${u.role}`}>{u.role_name || ROLE_LABEL[u.role] || u.role}</span>
             )}
             {canManage(u) && (
               <div className="user-actions">
@@ -109,48 +124,87 @@ function UsersTab() {
 }
 
 function NewUserModal({ me, workspace, onClose, onDone, showToast }) {
+  const [roles, setRoles] = useState([])
+  useEffect(() => { api.get('/api/roles').then(d => setRoles(d.roles)).catch(() => {}) }, [])
+  const isSuper = me.role === 'super_admin'
   const [form, setForm] = useState({
-    username: '', display_name: '', password: '', role: 'member',
-    color: '#579bfc', company_id: '',
+    username: '', display_name: '', password: '', color: '#579bfc',
+    company_id: me.role === 'company_admin' ? String(me.company_id) : '',
+    roleChoice: 'level:member',
+    siteMode: 'specific', company_ids: [],
   })
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
+  const targetCompany = form.company_id ? Number(form.company_id) : null
+  const isStaff = targetCompany === null
+  const baseLevels = isStaff
+    ? [...(isSuper ? [['super_admin', 'Super admin'], ['admin', 'Admin (IT staff)']] : []),
+       ['member', 'Member'], ['viewer', 'Viewer (read-only)']]
+    : [['company_admin', 'Company admin'], ['member', 'Member'], ['viewer', 'Viewer (read-only)']]
+  const customRoles = roles.filter(r => (r.company_id || null) === targetCompany)
+  const chosenLevel = form.roleChoice.startsWith('level:')
+    ? form.roleChoice.slice(6)
+    : roles.find(r => r.id === Number(form.roleChoice.slice(7)))?.level
+  const needsSites = isStaff && chosenLevel !== 'super_admin'
+
+  function toggleSite(id) {
+    setForm(f => ({ ...f, company_ids: f.company_ids.includes(id)
+      ? f.company_ids.filter(x => x !== id) : [...f.company_ids, id] }))
+  }
+
   async function submit(e) {
     e.preventDefault()
+    const payload = {
+      username: form.username, display_name: form.display_name,
+      password: form.password, color: form.color,
+      company_id: targetCompany,
+    }
+    if (form.roleChoice.startsWith('custom:')) payload.custom_role_id = Number(form.roleChoice.slice(7))
+    else payload.role = form.roleChoice.slice(6)
+    if (needsSites) {
+      if (form.siteMode === 'all') payload.all_companies = true
+      else payload.company_ids = form.company_ids
+    }
     try {
-      await api.post('/api/users', {
-        ...form,
-        company_id: form.company_id ? Number(form.company_id) : null,
-      })
+      await api.post('/api/users', payload)
       onDone()
     } catch (err) { showToast(err.message) }
   }
 
   return (
-    <Modal title="Create user" onClose={onClose}>
+    <Modal title="Create user" onClose={onClose} wide>
       <form className="form-col" onSubmit={submit}>
-        <label>Username</label>
-        <input value={form.username} onChange={set('username')} required autoFocus />
-        <label>Display name</label>
-        <input value={form.display_name} onChange={set('display_name')} />
+        <div className="form-row">
+          <div className="form-col-half">
+            <label>Username</label>
+            <input value={form.username} onChange={set('username')} required autoFocus />
+          </div>
+          <div className="form-col-half">
+            <label>Display name</label>
+            <input value={form.display_name} onChange={set('display_name')} />
+          </div>
+        </div>
         <label>Password (min. 6 characters — leave empty to set later)</label>
         <input type="password" value={form.password} onChange={set('password')} minLength={form.password ? 6 : undefined} />
-        {me.role === 'super_admin' && (
+
+        {me.role !== 'company_admin' && (
           <>
-            <label>Company (empty = your own IT staff)</label>
-            <select value={form.company_id} onChange={set('company_id')}>
-              <option value="">— IT staff (no company) —</option>
-              {workspace.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <label>Belongs to</label>
+            <select value={form.company_id}
+              onChange={e => setForm({ ...form, company_id: e.target.value, roleChoice: 'level:member', company_ids: [] })}>
+              {isSuper && <option value="">🛠️ IT staff (your own team)</option>}
+              {workspace.companies.map(c => <option key={c.id} value={c.id}>🏛️ {c.name}</option>)}
             </select>
           </>
         )}
+
         <div className="form-row">
           <div className="form-col-half">
             <label>Role</label>
-            <select value={form.role} onChange={set('role')}>
-              <option value="member">Member</option>
-              <option value="company_admin">Company admin</option>
-              {me.role === 'super_admin' && <option value="super_admin">Super admin</option>}
+            <select value={form.roleChoice} onChange={set('roleChoice')}>
+              {baseLevels.map(([v, l]) => <option key={v} value={'level:' + v}>{l}</option>)}
+              {customRoles.length > 0 && <option disabled>── custom roles ──</option>}
+              {customRoles.map(r => <option key={r.id} value={'custom:' + r.id}>🎭 {r.name}</option>)}
             </select>
           </div>
           <div className="form-col-half">
@@ -158,6 +212,36 @@ function NewUserModal({ me, workspace, onClose, onDone, showToast }) {
             <input type="color" value={form.color} onChange={set('color')} />
           </div>
         </div>
+
+        {needsSites && (
+          <div className="sites-box">
+            <label>Which companies (sites) can they access?</label>
+            <div className="form-row">
+              {isSuper && (
+                <label className="radio-row">
+                  <input type="radio" checked={form.siteMode === 'all'}
+                    onChange={() => setForm({ ...form, siteMode: 'all' })} /> 🌐 All companies
+                </label>
+              )}
+              <label className="radio-row">
+                <input type="radio" checked={form.siteMode === 'specific'}
+                  onChange={() => setForm({ ...form, siteMode: 'specific' })} /> Specific companies
+              </label>
+            </div>
+            {form.siteMode === 'specific' && (
+              <div className="sites-grid">
+                {workspace.companies.map(c => (
+                  <label key={c.id} className="radio-row">
+                    <input type="checkbox" checked={form.company_ids.includes(c.id)}
+                      onChange={() => toggleSite(c.id)} /> {c.name}
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="muted sites-hint">You can fine-tune down to departments, boards, or single jobs later via 🔑 Access.</p>
+          </div>
+        )}
+
         <button className="btn btn-primary">Create user</button>
       </form>
     </Modal>

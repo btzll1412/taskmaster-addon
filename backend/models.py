@@ -16,9 +16,11 @@ class User(db.Model):
     display_name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(200))
     color = db.Column(db.String(7), default='#579bfc')
-    # super_admin: sees everything | company_admin: full access to own company
-    # member: explicit grants only (plus items they are assigned to)
+    # super_admin: everything | admin: IT staff managing granted companies
+    # company_admin: full access to own company | member: explicit grants only
+    # viewer: like member but read-only
     role = db.Column(db.String(20), default='member')
+    custom_role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
     company_id = db.Column(db.Integer, db.ForeignKey('companies.id'))
     auth_source = db.Column(db.String(20), default='local')  # local (ldap planned)
     is_active = db.Column(db.Boolean, default=True)
@@ -31,6 +33,7 @@ class User(db.Model):
             'display_name': self.display_name,
             'color': self.color,
             'role': self.role,
+            'custom_role_id': self.custom_role_id,
             'company_id': self.company_id,
             'is_active': self.is_active,
             'has_password': bool(self.password_hash),
@@ -282,6 +285,25 @@ class Notification(db.Model):
             'message': self.message,
             'read': self.read,
             'created_at': iso(self.created_at),
+        }
+
+
+class Role(db.Model):
+    """Named role mapping to a base permission level. company_id null = IT staff role."""
+    __tablename__ = 'roles'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    # base level this role grants: admin | company_admin | member | viewer
+    level = db.Column(db.String(20), nullable=False, default='member')
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='CASCADE'))
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'level': self.level,
+            'company_id': self.company_id,
         }
 
 
