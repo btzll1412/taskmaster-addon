@@ -48,6 +48,8 @@ def create_app():
         db.create_all()
         from .migrate_v2 import migrate_v2_if_needed
         migrate_v2_if_needed()
+        from .migrate_v4 import migrate_v4
+        migrate_v4()
 
     from .api import register_blueprints
     register_blueprints(app)

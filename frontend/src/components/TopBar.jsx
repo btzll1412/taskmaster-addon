@@ -132,14 +132,14 @@ function UserMenu({ onClose }) {
           <Avatar user={user} size={36} />
           <div>
             <div className="user-menu-name">{user.display_name}</div>
-            <div className="muted">@{user.username} · {user.role}</div>
+            <div className="muted">@{user.username} · {user.role.replace('_', ' ')}</div>
           </div>
         </div>
         <button className="menu-item" onClick={() => setModal('profile')}>👤 My profile</button>
         <button className="menu-item" onClick={() => setModal('password')}>🔑 Change password</button>
-        {user.role === 'admin' && (
+        {(user.role === 'super_admin' || user.role === 'company_admin') && (
           <button className="menu-item" onClick={() => { navigate({ page: 'admin' }); onClose() }}>
-            🛡️ Manage users
+            🛡️ Manage users & access
           </button>
         )}
         <hr className="menu-sep" />

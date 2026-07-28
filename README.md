@@ -6,6 +6,15 @@ A free, self-hosted, monday.com-style work management platform. Runs as a **Home
 
 ## ✨ Features
 
+### Built for service companies (MSP-ready)
+- **Companies → Departments → Boards → Jobs → Sub-tasks** — model every customer in one system
+- **Per-user access control**: grant an entire company, a department, a single board, or even one job
+- **Three roles**: super admin (sees everything), company admin (runs their own company: its users, boards, and grants), member (sees only what was granted or assigned)
+- Full **company isolation** — a customer can never see another customer's data
+- **Automations**: "when Status becomes Stuck → notify these people" — per board, per label
+- **@mentions & flagging** — ping anyone on a job from an update or the Flag button
+- Being **assigned** to a job automatically makes it visible to you
+
 ### Boards, the monday.com way
 - **Boards → Groups → Items** — organize any kind of work
 - **Custom columns** — add any mix of column types to any board:
@@ -108,11 +117,10 @@ All endpoints live under `/api` and use session-cookie authentication (`POST /ap
 
 ## 🗺️ Roadmap
 
-- Automations builder (when X happens → do Y), monday-style
 - Calendar & timeline (Gantt) views
 - LDAP / Active Directory login
-- Mobile app (PWA)
 - Email notifications
+- More automation triggers (due dates, assignments)
 
 ## 📦 Data
 

@@ -10,6 +10,7 @@ export const useStore = create((set, get) => ({
   // data
   users: [],
   boards: [],
+  workspace: { companies: [], can_create_companies: false },
   boardData: null, // { board, groups, columns, items }
   boardLoading: false,
   stats: null,
@@ -32,11 +33,12 @@ export const useStore = create((set, get) => ({
   },
 
   async loadCore() {
-    const [users, boards] = await Promise.all([
+    const [users, boards, workspace] = await Promise.all([
       api.get('/api/users'),
       api.get('/api/boards'),
+      api.get('/api/workspace'),
     ])
-    set({ users: users.users, boards: boards.boards })
+    set({ users: users.users, boards: boards.boards, workspace })
     get().refreshNotifications()
     const saved = localStorage.getItem('tm-route')
     if (saved) {
@@ -83,8 +85,11 @@ export const useStore = create((set, get) => ({
   },
 
   async refreshBoards() {
-    const boards = await api.get('/api/boards')
-    set({ boards: boards.boards })
+    const [boards, workspace] = await Promise.all([
+      api.get('/api/boards'),
+      api.get('/api/workspace'),
+    ])
+    set({ boards: boards.boards, workspace })
   },
 
   async refreshUsers() {

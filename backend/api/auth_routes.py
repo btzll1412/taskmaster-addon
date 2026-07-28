@@ -40,7 +40,7 @@ def setup():
         user = User(username=username, display_name=display_name)
         db.session.add(user)
     user.display_name = display_name
-    user.role = 'admin'
+    user.role = 'super_admin'
     user.is_active = True
     user.password_hash = generate_password_hash(password)
     db.session.commit()

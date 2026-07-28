@@ -3,10 +3,12 @@ import { api } from '../api'
 import { useStore } from '../store'
 import TableView from '../components/TableView'
 import KanbanView from '../components/KanbanView'
+import RulesModal from '../components/RulesModal'
 import { Avatar, Popover, Spinner } from '../components/ui'
 
 export default function BoardView() {
-  const { boardData, boardLoading, route, users, refreshBoard, refreshBoards, navigate, showToast } = useStore()
+  const { boardData, boardLoading, route, users, workspace, refreshBoard, refreshBoards, navigate, showToast } = useStore()
+  const [showRules, setShowRules] = useState(false)
   const boardId = route.boardId
   const [view, setView] = useState(() => localStorage.getItem(`tm-view-${boardId}`) || 'table')
   const [search, setSearch] = useState('')
@@ -18,6 +20,9 @@ export default function BoardView() {
   const board = ready ? boardData.board : null
   const columns = ready ? boardData.columns : []
   const items = ready ? boardData.items : []
+  const canEdit = ready && boardData.access === 'full'
+  const dept = ready ? boardData.department : null
+  const company = dept ? workspace.companies.find(c => c.id === dept.company_id) : null
 
   const filtered = useMemo(() => {
     const peopleColIds = columns.filter(c => c.type === 'people').map(c => String(c.id))
@@ -51,17 +56,25 @@ export default function BoardView() {
   return (
     <div className="board-view">
       <div className="board-head">
+        {(company || dept) && (
+          <div className="breadcrumb">
+            {company && <span>{company.name}</span>}
+            {company && dept && <span className="crumb-sep">/</span>}
+            {dept && <span>{dept.icon} {dept.name}</span>}
+          </div>
+        )}
         <div className="board-title-row">
           <span className="board-icon">{board.icon}</span>
-          {renaming ? (
+          {renaming && canEdit ? (
             <input className="board-rename" autoFocus defaultValue={board.name}
               onBlur={e => { setRenaming(false); const v = e.target.value.trim(); if (v && v !== board.name) act(api.put(`/api/boards/${board.id}`, { name: v })) }}
               onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setRenaming(false) }} />
           ) : (
-            <h2 onClick={() => setRenaming(true)} title="Click to rename">{board.name}</h2>
+            <h2 onClick={() => canEdit && setRenaming(true)} title={canEdit ? 'Click to rename' : undefined}>{board.name}</h2>
           )}
+          {!canEdit && <span className="archived-tag" title="You see only the jobs shared with you">Limited access</span>}
           {board.archived && <span className="archived-tag">Archived</span>}
-          <div className="topbar-anchor">
+          <div className="topbar-anchor" style={canEdit ? undefined : { display: 'none' }}>
             <button className="icon-btn" onClick={() => setMenu(true)}>⋯</button>
             {menu && (
               <Popover onClose={() => setMenu(false)} width={210}>
@@ -99,12 +112,14 @@ export default function BoardView() {
         </div>
 
         <div className="board-toolbar">
-          <button className="btn btn-primary" onClick={async () => {
+          {canEdit && <button className="btn btn-primary" onClick={async () => {
             try {
               await api.post(`/api/boards/${board.id}/items`, { name: 'New item' })
               await refreshBoard()
             } catch (e) { showToast(e.message) }
-          }}>New item</button>
+          }}>New item</button>}
+          {canEdit && <button className="btn btn-secondary" title="Notify people automatically on status changes"
+            onClick={() => setShowRules(true)}>🔔 Automations</button>}
           <input className="board-search" placeholder="🔍 Search this board"
             value={search} onChange={e => setSearch(e.target.value)} />
           <div className="person-filter">
@@ -124,8 +139,10 @@ export default function BoardView() {
       </div>
 
       {view === 'table'
-        ? <TableView items={filtered} />
-        : <KanbanView items={filtered} />}
+        ? <TableView items={filtered} canEdit={canEdit} />
+        : <KanbanView items={filtered} canEdit={canEdit} />}
+
+      {showRules && <RulesModal board={board} columns={columns} onClose={() => setShowRules(false)} />}
     </div>
   )
 }

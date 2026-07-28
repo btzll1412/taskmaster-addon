@@ -3,9 +3,11 @@ import json
 from flask import Blueprint, jsonify, request
 
 from .. import ha
+from .. import permissions as perm
 from ..auth import login_required
 from ..db import db
-from ..models import Activity, Board, BoardColumn, BoardGroup, Item, User
+from ..models import (Activity, Board, BoardColumn, BoardGroup, Department,
+                      Item, User)
 from ..services import (COLUMN_DEFAULT_WIDTH, DEFAULT_COLUMN_SETTINGS,
                         GROUP_COLORS, broadcast_board,
                         create_default_board_layout, log_activity,
@@ -14,23 +16,40 @@ from ..services import (COLUMN_DEFAULT_WIDTH, DEFAULT_COLUMN_SETTINGS,
 bp = Blueprint('boards', __name__, url_prefix='/api')
 
 
+def _board_or_403(user, board_id, need_edit=False):
+    board = Board.query.get_or_404(board_id)
+    access = perm.board_access(user, board)
+    if access is None or (need_edit and access != 'full'):
+        return board, None
+    return board, access
+
+
 @bp.get('/boards')
 @login_required
 def list_boards(user):
-    boards = Board.query.order_by(Board.position, Board.id).all()
-    item_counts = dict(
-        db.session.query(Item.board_id, db.func.count(Item.id)).group_by(Item.board_id).all())
+    """Flat list of accessible boards (the sidebar uses /api/workspace)."""
     out = []
-    for b in boards:
-        d = b.to_dict()
-        d['items_count'] = item_counts.get(b.id, 0)
-        out.append(d)
+    for b in Board.query.order_by(Board.position, Board.id).all():
+        access = perm.board_access(user, b)
+        if access:
+            d = b.to_dict()
+            d['access'] = access
+            out.append(d)
     return jsonify({'boards': out})
 
 
-@bp.post('/boards')
+@bp.post('/departments/<int:dept_id>/boards')
 @login_required
-def create_board(user):
+def create_board(user, dept_id):
+    dept = Department.query.get_or_404(dept_id)
+    allowed = (perm.is_super(user)
+               or perm.can_manage_company(user, dept.company_id)
+               or any(g.scope_type == 'department' and g.scope_id == dept.id
+                      for g in perm.user_grants(user))
+               or any(g.scope_type == 'company' and g.scope_id == dept.company_id
+                      for g in perm.user_grants(user)))
+    if not allowed:
+        return jsonify({'error': 'No permission to create boards in this department'}), 403
     data = request.json or {}
     name = (data.get('name') or '').strip()
     if not name:
@@ -41,6 +60,7 @@ def create_board(user):
         description=(data.get('description') or '').strip(),
         icon=data.get('icon') or '📋',
         color=data.get('color') or '#579bfc',
+        department_id=dept.id,
         owner_id=user.id,
         position=max_pos + 1,
     )
@@ -56,18 +76,29 @@ def create_board(user):
 @bp.get('/boards/<int:board_id>')
 @login_required
 def get_board(user, board_id):
-    board = Board.query.get_or_404(board_id)
-    return jsonify(serialize_board_full(board))
+    board, access = _board_or_403(user, board_id)
+    if not access:
+        return jsonify({'error': 'You do not have access to this board'}), 403
+    visible = perm.visible_item_ids(user, board)
+    payload = serialize_board_full(board, visible_ids=visible, access=access)
+    dept = db.session.get(Department, board.department_id) if board.department_id else None
+    payload['department'] = dept.to_dict() if dept else None
+    return jsonify(payload)
 
 
 @bp.put('/boards/<int:board_id>')
 @login_required
 def update_board(user, board_id):
-    board = Board.query.get_or_404(board_id)
+    board, access = _board_or_403(user, board_id, need_edit=True)
+    if not access:
+        return jsonify({'error': 'No permission to edit this board'}), 403
     data = request.json or {}
     for field in ('name', 'description', 'icon', 'color'):
         if field in data:
             setattr(board, field, data[field])
+    if 'department_id' in data and perm.is_super(user):
+        if Department.query.get(data['department_id']):
+            board.department_id = data['department_id']
     if 'archived' in data:
         board.archived = bool(data['archived'])
         log_activity(user.id, board.id, None, 'board_archived',
@@ -83,7 +114,9 @@ def update_board(user, board_id):
 @login_required
 def delete_board(user, board_id):
     board = Board.query.get_or_404(board_id)
-    if user.role != 'admin' and board.owner_id != user.id:
+    company_id = perm.board_company_id(board)
+    if not (perm.is_super(user) or board.owner_id == user.id
+            or (company_id and perm.can_manage_company(user, company_id))):
         return jsonify({'error': 'Only the board owner or an admin can delete a board'}), 403
     name = board.name
     db.session.delete(board)
@@ -98,7 +131,9 @@ def delete_board(user, board_id):
 @bp.post('/boards/<int:board_id>/groups')
 @login_required
 def create_group(user, board_id):
-    board = Board.query.get_or_404(board_id)
+    board, access = _board_or_403(user, board_id, need_edit=True)
+    if not access:
+        return jsonify({'error': 'No permission to edit this board'}), 403
     data = request.json or {}
     name = (data.get('name') or '').strip() or 'New Group'
     existing = BoardGroup.query.filter_by(board_id=board.id).count()
@@ -120,6 +155,9 @@ def create_group(user, board_id):
 @login_required
 def update_group(user, group_id):
     group = BoardGroup.query.get_or_404(group_id)
+    board = db.session.get(Board, group.board_id)
+    if not perm.can_edit_board(user, board):
+        return jsonify({'error': 'No permission to edit this board'}), 403
     data = request.json or {}
     for field in ('name', 'color'):
         if field in data:
@@ -137,6 +175,9 @@ def update_group(user, group_id):
 @login_required
 def delete_group(user, group_id):
     group = BoardGroup.query.get_or_404(group_id)
+    board = db.session.get(Board, group.board_id)
+    if not perm.can_edit_board(user, board):
+        return jsonify({'error': 'No permission to edit this board'}), 403
     board_id = group.board_id
     if BoardGroup.query.filter_by(board_id=board_id).count() <= 1:
         return jsonify({'error': 'A board must keep at least one group'}), 400
@@ -153,7 +194,9 @@ def delete_group(user, group_id):
 @bp.post('/boards/<int:board_id>/columns')
 @login_required
 def create_column(user, board_id):
-    board = Board.query.get_or_404(board_id)
+    board, access = _board_or_403(user, board_id, need_edit=True)
+    if not access:
+        return jsonify({'error': 'No permission to edit this board'}), 403
     data = request.json or {}
     ctype = data.get('type')
     if ctype not in DEFAULT_COLUMN_SETTINGS:
@@ -177,6 +220,9 @@ def create_column(user, board_id):
 @login_required
 def update_column(user, column_id):
     col = BoardColumn.query.get_or_404(column_id)
+    board = db.session.get(Board, col.board_id)
+    if not perm.can_edit_board(user, board):
+        return jsonify({'error': 'No permission to edit this board'}), 403
     data = request.json or {}
     if 'title' in data and data['title'].strip():
         col.title = data['title'].strip()
@@ -195,6 +241,9 @@ def update_column(user, column_id):
 @login_required
 def delete_column(user, column_id):
     col = BoardColumn.query.get_or_404(column_id)
+    board = db.session.get(Board, col.board_id)
+    if not perm.can_edit_board(user, board):
+        return jsonify({'error': 'No permission to edit this board'}), 403
     board_id = col.board_id
     log_activity(user.id, board_id, None, 'column_deleted', f'deleted column "{col.title}"')
     db.session.delete(col)
@@ -208,7 +257,9 @@ def delete_column(user, column_id):
 @bp.get('/boards/<int:board_id>/activity')
 @login_required
 def board_activity(user, board_id):
-    Board.query.get_or_404(board_id)
+    board, access = _board_or_403(user, board_id)
+    if not access:
+        return jsonify({'error': 'You do not have access to this board'}), 403
     rows = (Activity.query.filter_by(board_id=board_id)
             .order_by(Activity.created_at.desc()).limit(100).all())
     users = {u.id: u.to_dict() for u in User.query.all()}

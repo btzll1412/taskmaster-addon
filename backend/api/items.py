@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 
@@ -7,11 +8,12 @@ from flask import Blueprint, jsonify, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from .. import ha
+from .. import permissions as perm
 from ..auth import login_required
 from ..config import ALLOWED_EXTENSIONS, UPLOAD_DIR
 from ..db import db
 from ..models import (Activity, Board, BoardColumn, BoardGroup, FileAsset,
-                      Item, ItemUpdate, ItemValue, User)
+                      Item, ItemUpdate, ItemValue, NotificationRule, User)
 from ..services import (broadcast_board, log_activity, notify_user,
                         people_column_user_ids)
 
@@ -26,8 +28,22 @@ def create_item(user, board_id):
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Item name is required'}), 400
+    parent = None
+    if data.get('parent_id'):
+        parent = Item.query.filter_by(id=data['parent_id'], board_id=board.id).first()
+        if parent is None:
+            return jsonify({'error': 'Parent item not found'}), 404
+        if parent.parent_id:
+            return jsonify({'error': 'Sub-tasks cannot have their own sub-tasks'}), 400
+        # anyone who can see a job may add sub-tasks to it
+        if not perm.can_view_item(user, parent):
+            return jsonify({'error': 'No access to this item'}), 403
+    elif not perm.can_edit_board(user, board):
+        return jsonify({'error': 'No permission to add items to this board'}), 403
     group = None
-    if data.get('group_id'):
+    if parent is not None:
+        group = db.session.get(BoardGroup, parent.group_id)
+    elif data.get('group_id'):
         group = BoardGroup.query.filter_by(id=data['group_id'], board_id=board.id).first()
     if group is None:
         group = (BoardGroup.query.filter_by(board_id=board.id)
@@ -37,6 +53,7 @@ def create_item(user, board_id):
     max_pos = (db.session.query(db.func.max(Item.position))
                .filter_by(group_id=group.id).scalar() or 0)
     item = Item(board_id=board.id, group_id=group.id, name=name,
+                parent_id=parent.id if parent else None,
                 position=max_pos + 1, created_by=user.id)
     db.session.add(item)
     db.session.flush()
@@ -54,6 +71,8 @@ def create_item(user, board_id):
 @login_required
 def update_item(user, item_id):
     item = Item.query.get_or_404(item_id)
+    if not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this item'}), 403
     data = request.json or {}
     if 'name' in data and data['name'].strip():
         old = item.name
@@ -78,17 +97,22 @@ def update_item(user, item_id):
 @login_required
 def delete_item(user, item_id):
     item = Item.query.get_or_404(item_id)
+    board = db.session.get(Board, item.board_id)
+    if not (perm.can_edit_board(user, board) or item.created_by == user.id):
+        return jsonify({'error': 'No permission to delete this item'}), 403
     board_id = item.board_id
     log_activity(user.id, board_id, None, 'item_deleted', f'deleted "{item.name}"')
-    ItemValue.query.filter_by(item_id=item.id).delete()
-    ItemUpdate.query.filter_by(item_id=item.id).delete()
-    for f in FileAsset.query.filter_by(item_id=item.id).all():
-        try:
-            os.remove(os.path.join(UPLOAD_DIR, f.filename))
-        except OSError:
-            pass
-        db.session.delete(f)
-    db.session.delete(item)
+    targets = [item] + Item.query.filter_by(parent_id=item.id).all()
+    for t in targets:
+        ItemValue.query.filter_by(item_id=t.id).delete()
+        ItemUpdate.query.filter_by(item_id=t.id).delete()
+        for f in FileAsset.query.filter_by(item_id=t.id).all():
+            try:
+                os.remove(os.path.join(UPLOAD_DIR, f.filename))
+            except OSError:
+                pass
+            db.session.delete(f)
+        db.session.delete(t)
     db.session.commit()
     broadcast_board(board_id)
     return jsonify({'ok': True})
@@ -128,6 +152,8 @@ def _describe_value(col, value):
 @login_required
 def set_value(user, item_id, column_id):
     item = Item.query.get_or_404(item_id)
+    if not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this item'}), 403
     col = BoardColumn.query.get_or_404(column_id)
     if col.board_id != item.board_id:
         return jsonify({'error': 'Column does not belong to this board'}), 400
@@ -171,9 +197,22 @@ def set_value(user, item_id, column_id):
             'old_status': old_desc, 'new_status': new_desc, 'changed_by': user.username,
         })
         # Notify assignees about status changes made by someone else
+        notified = set()
         for uid in people_column_user_ids(item.id):
             notify_user(uid, user.id, 'status', item.board_id, item.id,
                         f'{user.display_name} set {col.title} of "{item.name}" to {new_desc}')
+            notified.add(uid)
+        # Board notification rules: when <column> becomes <label>, notify <users>
+        new_label_id = (value or {}).get('id')
+        for rule in NotificationRule.query.filter_by(board_id=item.board_id,
+                                                     column_id=col.id).all():
+            if rule.label_id and rule.label_id != new_label_id:
+                continue
+            for uid in rule.user_id_list():
+                if uid not in notified:
+                    notify_user(uid, user.id, 'status', item.board_id, item.id,
+                                f'{col.title} of "{item.name}" on {board.name} changed to {new_desc}')
+                    notified.add(uid)
         db.session.commit()
 
     return jsonify({'ok': True, 'value': value})
@@ -183,6 +222,8 @@ def set_value(user, item_id, column_id):
 @login_required
 def get_item(user, item_id):
     item = Item.query.get_or_404(item_id)
+    if not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this item'}), 403
     values = {str(v.column_id): v.value_dict()
               for v in ItemValue.query.filter_by(item_id=item.id).all()}
     updates = (ItemUpdate.query.filter_by(item_id=item.id)
@@ -191,12 +232,39 @@ def get_item(user, item_id):
              .order_by(FileAsset.created_at.desc()).all())
     activity = (Activity.query.filter_by(item_id=item.id)
                 .order_by(Activity.created_at.desc()).limit(50).all())
+    subitems = (Item.query.filter_by(parent_id=item.id)
+                .order_by(Item.position).all())
+    from ..services import values_for_items
+    sub_values = values_for_items([si.id for si in subitems])
+    parent = db.session.get(Item, item.parent_id) if item.parent_id else None
     return jsonify({
         'item': item.to_dict(values=values),
+        'parent': {'id': parent.id, 'name': parent.name} if parent else None,
+        'subitems': [si.to_dict(values=sub_values.get(si.id, {})) for si in subitems],
         'updates': [u.to_dict() for u in updates],
         'files': [f.to_dict() for f in files],
         'activity': [a.to_dict() for a in activity],
     })
+
+
+@bp.post('/items/<int:item_id>/flag')
+@login_required
+def flag_item(user, item_id):
+    """Flag a person on a job: pings them with a notification."""
+    item = Item.query.get_or_404(item_id)
+    if not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this item'}), 403
+    target_id = (request.json or {}).get('user_id')
+    target = db.session.get(User, target_id) if target_id else None
+    if not target or target.id not in {u.id for u in perm.visible_users(user)}:
+        return jsonify({'error': 'User not found'}), 404
+    board = db.session.get(Board, item.board_id)
+    notify_user(target.id, user.id, 'mention', item.board_id, item.id,
+                f'{user.display_name} flagged you on "{item.name}" ({board.name})')
+    log_activity(user.id, item.board_id, item.id, 'flagged',
+                 f'flagged {target.display_name} on "{item.name}"')
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 # ---- Updates (comments) ----
@@ -205,6 +273,8 @@ def get_item(user, item_id):
 @login_required
 def create_update(user, item_id):
     item = Item.query.get_or_404(item_id)
+    if not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this item'}), 403
     body = ((request.json or {}).get('body') or '').strip()
     if not body:
         return jsonify({'error': 'Update text is required'}), 400
@@ -212,9 +282,19 @@ def create_update(user, item_id):
     db.session.add(upd)
     log_activity(user.id, item.board_id, item.id, 'update_posted',
                  f'wrote an update on "{item.name}"')
+    notified = set()
+    # @mentions get a direct "flagged you" notification
+    mentioned = {m.lower() for m in re.findall(r'@([A-Za-z0-9_.\-]+)', body)}
+    if mentioned:
+        for u in perm.visible_users(user):
+            if u.username.lower() in mentioned:
+                notify_user(u.id, user.id, 'mention', item.board_id, item.id,
+                            f'{user.display_name} mentioned you on "{item.name}"')
+                notified.add(u.id)
     for uid in people_column_user_ids(item.id):
-        notify_user(uid, user.id, 'update', item.board_id, item.id,
-                    f'{user.display_name} wrote an update on "{item.name}"')
+        if uid not in notified:
+            notify_user(uid, user.id, 'update', item.board_id, item.id,
+                        f'{user.display_name} wrote an update on "{item.name}"')
     db.session.commit()
     broadcast_board(item.board_id)
     return jsonify({'update': upd.to_dict()}), 201
@@ -255,6 +335,8 @@ def _allowed_file(filename):
 @login_required
 def upload_file(user, item_id):
     item = Item.query.get_or_404(item_id)
+    if not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this item'}), 403
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     f = request.files['file']
@@ -282,6 +364,9 @@ def upload_file(user, item_id):
 @login_required
 def download_file(user, file_id):
     asset = FileAsset.query.get_or_404(file_id)
+    item = db.session.get(Item, asset.item_id)
+    if item and not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this file'}), 403
     return send_from_directory(UPLOAD_DIR, asset.filename,
                                download_name=asset.original_filename)
 

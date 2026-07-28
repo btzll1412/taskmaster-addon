@@ -4,7 +4,8 @@ import { useStore } from '../store'
 import { AvatarStack, fmtDate, dueClass } from './ui'
 
 /** Kanban view: lanes come from the labels of a status-type column. */
-export default function KanbanView({ items }) {
+export default function KanbanView({ items, canEdit }) {
+  items = items.filter(i => !i.parent_id)
   const { boardData, users, refreshBoard, openItem, showToast } = useStore()
   const { board, columns } = boardData
   const statusCols = columns.filter(c => c.type === 'status' || c.type === 'priority')

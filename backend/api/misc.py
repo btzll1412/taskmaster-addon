@@ -1,6 +1,7 @@
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from .. import ha, realtime
+from .. import permissions as perm
 from ..auth import login_required
 from ..db import db
 from ..models import (Activity, Board, BoardColumn, BoardGroup, Item,
@@ -87,9 +88,11 @@ def search(user):
     if len(q) < 2:
         return jsonify({'items': [], 'boards': []})
     like = f'%{q}%'
-    items = (Item.query.filter(Item.name.ilike(like))
-             .order_by(Item.updated_at.desc()).limit(30).all())
-    boards = (Board.query.filter(Board.name.ilike(like)).limit(10).all())
+    items = [i for i in (Item.query.filter(Item.name.ilike(like))
+                         .order_by(Item.updated_at.desc()).limit(120).all())
+             if perm.can_view_item(user, i)][:30]
+    boards = [b for b in Board.query.filter(Board.name.ilike(like)).limit(40).all()
+              if perm.board_access(user, b)][:10]
     board_names = {b.id: b.name for b in
                    Board.query.filter(Board.id.in_({i.board_id for i in items})).all()}
     out = []
@@ -103,13 +106,18 @@ def search(user):
 @bp.get('/stats')
 @login_required
 def stats(user):
-    boards_count = Board.query.filter_by(archived=False).count()
-    items_count = Item.query.count()
-    users_count = User.query.filter_by(is_active=True).count()
+    my_boards = [b for b in Board.query.all() if perm.board_access(user, b) == 'full']
+    board_ids = [b.id for b in my_boards]
+    boards_count = len([b for b in my_boards if not b.archived])
+    items_count = (Item.query.filter(Item.board_id.in_(board_ids)).count()
+                   if board_ids else 0)
+    users_count = len([u for u in perm.visible_users(user) if u.is_active])
 
-    # Done = item whose first status column value has a green-ish "Done" label
+    # Done = item whose status column value carries a "Done" label
     done = 0
-    status_cols = BoardColumn.query.filter_by(type='status').all()
+    status_cols = (BoardColumn.query.filter(BoardColumn.type == 'status',
+                                            BoardColumn.board_id.in_(board_ids)).all()
+                   if board_ids else [])
     done_ids = {}
     for c in status_cols:
         done_ids[c.id] = {l['id'] for l in c.settings_dict().get('labels', [])
@@ -119,7 +127,9 @@ def stats(user):
             if v.value_dict().get('id') in done_ids.get(v.column_id, set()):
                 done += 1
 
-    recent = (Activity.query.order_by(Activity.created_at.desc()).limit(20).all())
+    recent = ((Activity.query.filter(Activity.board_id.in_(board_ids))
+               .order_by(Activity.created_at.desc()).limit(20).all())
+              if board_ids else [])
     users = {u.id: u.to_dict() for u in User.query.all()}
     board_names = {b.id: b.name for b in Board.query.all()}
 
