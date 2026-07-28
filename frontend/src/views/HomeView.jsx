@@ -3,26 +3,39 @@ import { useStore } from '../store'
 import { Avatar, timeAgo } from '../components/ui'
 
 export default function HomeView() {
-  const { user, stats, boards, refreshStats, openBoard, openItem } = useStore()
+  const { user, stats, boards, refreshStats, openBoard, openItem, navigate } = useStore()
 
   useEffect(() => { refreshStats() }, [])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   const active = boards.filter(b => !b.archived)
+  const ov = stats?.overview
+  const isSuper = user.role === 'super_admin'
+  const isAdmin = isSuper || user.role === 'company_admin'
+
+  const cards = ov ? [
+    ...(isSuper ? [{ icon: '🏛️', label: 'Companies', value: ov.companies, go: () => navigate({ page: 'admin', tab: 'companies' }) }] : []),
+    { icon: '🏢', label: 'Departments', value: ov.departments },
+    { icon: '📋', label: 'Jobs', value: ov.jobs },
+    { icon: '🧩', label: 'Tasks', value: ov.tasks },
+    { icon: '👥', label: 'Users', value: ov.users, go: isAdmin ? () => navigate({ page: 'admin', tab: 'users' }) : null },
+  ] : []
 
   return (
     <div className="home-view">
       <h2 className="home-greeting">{greeting}, {user.display_name.split(' ')[0]}! 👋</h2>
 
-      {stats && (
-        <div className="stat-tiles">
-          <div className="stat-tile"><span className="stat-num">{stats.boards}</span><span className="stat-label">Boards</span></div>
-          <div className="stat-tile"><span className="stat-num">{stats.items}</span><span className="stat-label">Items</span></div>
-          <div className="stat-tile stat-done"><span className="stat-num">{stats.done}</span><span className="stat-label">Done</span></div>
-          <div className="stat-tile"><span className="stat-num">{stats.users}</span><span className="stat-label">Teammates</span></div>
-        </div>
-      )}
+      <div className="overview-cards">
+        {cards.map(c => (
+          <button key={c.label} className={`overview-card ${c.go ? 'clickable' : ''}`}
+            onClick={c.go || undefined} disabled={!c.go}>
+            <span className="overview-icon">{c.icon}</span>
+            <span className="overview-num">{c.value}</span>
+            <span className="overview-label">{c.label}</span>
+          </button>
+        ))}
+      </div>
 
       <div className="home-columns">
         <section className="home-section">
@@ -32,7 +45,7 @@ export default function HomeView() {
               <button key={b.id} className="board-card" onClick={() => openBoard(b.id)}>
                 <span className="board-card-icon">{b.icon}</span>
                 <span className="board-card-name">{b.name}</span>
-                <span className="muted">{b.items_count} item{b.items_count === 1 ? '' : 's'}</span>
+                <span className="muted">{b.access === 'partial' ? '🔒 limited' : ''}</span>
               </button>
             ))}
             {active.length === 0 && (

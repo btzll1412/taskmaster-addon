@@ -126,6 +126,34 @@ def delete_board(user, board_id):
     return jsonify({'ok': True})
 
 
+@bp.get('/boards/<int:board_id>/items')
+@login_required
+def list_items_lite(user, board_id):
+    """Light job list (id + name + status color) for the sidebar tree."""
+    board, access = _board_or_403(user, board_id)
+    if not access:
+        return jsonify({'error': 'You do not have access to this board'}), 403
+    visible = perm.visible_item_ids(user, board)
+    items = (Item.query.filter_by(board_id=board.id)
+             .filter(Item.parent_id.is_(None)).order_by(Item.position).all())
+    if visible is not None:
+        items = [i for i in items if i.id in visible]
+    # first status column gives each job its dot color
+    from ..models import ItemValue
+    status_col = (BoardColumn.query.filter_by(board_id=board.id, type='status')
+                  .order_by(BoardColumn.position).first())
+    colors = {}
+    if status_col and items:
+        labels = {l['id']: l['color'] for l in status_col.settings_dict().get('labels', [])}
+        for v in ItemValue.query.filter(
+                ItemValue.column_id == status_col.id,
+                ItemValue.item_id.in_([i.id for i in items])).all():
+            colors[v.item_id] = labels.get(v.value_dict().get('id'))
+    return jsonify({'items': [
+        {'id': i.id, 'name': i.name, 'color': colors.get(i.id)} for i in items
+    ]})
+
+
 # ---- Groups ----
 
 @bp.post('/boards/<int:board_id>/groups')
