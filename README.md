@@ -1,278 +1,123 @@
-# TaskMaster - Collaborative Task Management for Home Assistant
+# TaskMaster v3 — Self-Hosted Work Management
 
-A complete, full-featured task management system designed as a Home Assistant add-on, enabling multi-user collaboration, date/time tracking, image uploads, and deep integration with Home Assistant automations.
+A free, self-hosted, monday.com-style work management platform. Runs as a **Home Assistant add-on** or as a **standalone Docker container** — your data never leaves your network.
 
-## Features
+![Boards](https://img.shields.io/badge/version-3.0.0-blue) ![License](https://img.shields.io/badge/license-MIT-green)
 
-### 🎯 Core Task Management
-- **Multi-user collaboration** - Multiple users can work on projects together
-- **Color-coded status system** with 4 states:
-  - 🚀 **Starting** (Blue) - Tasks just beginning
-  - ⚡ **In Progress** (Orange) - Actively being worked on
-  - 🔄 **Ongoing** (Purple) - Continuous/recurring work
-  - ✅ **Done** (Green) - Completed tasks
-- **Priority levels** (Low, Medium, High)
-- **Task assignment** - Assign tasks to specific users
-- **Notes & Comments** - Each task can have multiple notes from different users
-- **User attribution** - Every note shows who wrote it with color coding
+## ✨ Features
 
-### 📅 Date & Time Tracking
-- **Automatic timestamps** - Created, started, and completed dates
-- **Estimated completion** - Set and update target finish times
-- **Time remaining** - Real-time calculation of days/hours until deadline
-- **Overdue warnings** - Visual alerts when past estimated completion
-- **Full timeline view** - See complete task history
+### Boards, the monday.com way
+- **Boards → Groups → Items** — organize any kind of work
+- **Custom columns** — add any mix of column types to any board:
+  - 🟢 **Status** — fully customizable labels & colors
+  - 🚩 **Priority** — Critical / High / Medium / Low (customizable)
+  - 👥 **People** — assign multiple teammates
+  - 📅 **Date** — due dates with overdue highlighting
+  - 🔤 **Text**, #️⃣ **Number**, 🏷️ **Dropdown/Tags**, ☑️ **Checkbox**
+- **Table view** — spreadsheet-style with inline editing everywhere
+- **Kanban view** — drag & drop cards between status lanes
+- **Groups** — color-coded sections with collapse, rename, reorder
 
-### 📷 Image Upload System
-- **Multiple images per task** - Upload unlimited images
-- **Shared visibility** - All team members see all images
-- **Image gallery** - Beautiful grid display
-- **User attribution** - Shows who uploaded each image
-- **Full-size preview** - Click to view images in full resolution
-- **Supported formats** - PNG, JPG, JPEG, GIF, WEBP, BMP (up to 16MB)
+### Collaboration
+- **Real user accounts** — username + password login, admin/member roles
+- **Live sync** — changes from teammates appear instantly (server-sent events)
+- **Updates & conversations** on every item
+- **File & image uploads** with previews
+- **Notifications** — get notified when you're assigned or mentioned in activity
+- **Activity log** — full history per item and per board
+- **My Work** — everything assigned to you across all boards, sorted by due date
+- **Global search** — find any item or board instantly
+- **Dark mode** 🌙
 
-### 🏠 Home Assistant Integration
-- **Real-time events** fired for:
-  - Task creation
-  - Status changes
-  - Task assignment
-  - Note additions
-  - Image uploads
-  - Project creation
-- **REST API sensors** for statistics
-- **Automation triggers** based on task states
-- **Notification support** via Home Assistant
-- **State sensors** for tracking task counts
+### Home Assistant integration
+- Fires events for automations: `taskmaster_item_created`, `taskmaster_status_changed`, `taskmaster_board_created`
+- Publishes a `sensor.taskmaster_items` statistics sensor
+- Works fully standalone too — HA is optional
 
-### 📊 Dashboard & UI
-- Beautiful, responsive web interface
-- Real-time statistics dashboard
-- Color-coded task cards
-- Project organization
-- User management with custom colors
-- Note threading on tasks
-- Image galleries
+## 🚀 Installation
 
-## Installation
+### Option A: Home Assistant add-on
 
-### Method 1: Manual Installation
+1. Copy this repository folder to `/addons/taskmaster-addon/` on your Home Assistant machine
+   (or add the repository URL in **Settings → Add-ons → Add-on Store → ⋮ → Repositories**).
+2. **Settings → Add-ons → Add-on Store → ⋮ → Check for updates**, then install **TaskMaster**.
+3. Start the add-on and open `http://homeassistant.local:8099`.
 
-1. Copy the entire `taskmaster-addon` folder to your Home Assistant add-ons directory:
-```
-   /addons/taskmaster-addon/
+### Option B: Standalone Docker (no Home Assistant)
+
+```bash
+git clone https://github.com/btzll1412/taskmaster-addon.git
+cd taskmaster-addon
+docker compose up -d
 ```
 
-2. Restart Home Assistant
+Open `http://localhost:8099`.
 
-3. Navigate to **Settings → Add-ons → Add-on Store**
+### First run
 
-4. Click the menu (three dots) and select **Reload**
+The first visit shows a **setup screen** — create your admin account there. Then add your teammates under **avatar menu → Manage users**.
 
-5. You should see **TaskMaster** in your local add-ons
+> **Upgrading from v2?** Your projects, tasks, notes, tags, assignees, and images are migrated to boards automatically on first start (the old tables are kept in the database as a backup). Migrated users have no password yet — after creating your admin account, set their passwords in **Manage users**. Tip: use your old v2 username for the admin account and it will be linked automatically.
 
-6. Click on TaskMaster and then **Install**
+## 🧑‍💻 Development
 
-7. Start the add-on
+```bash
+# Backend (Flask + SQLite)
+pip install -r requirements.txt
+DATA_DIR=./data python3 app.py            # serves API + built frontend on :8099
 
-8. Access the interface at: `http://homeassistant.local:8099`
-
-## Quick Start Guide
-
-### 1. Create Users
-First, create users who will be collaborating on projects:
-- Click **+ User** button
-- Enter username and display name
-- Choose a color for the user (used for visual identification)
-- Submit
-
-### 2. Select Active User
-- Use the user dropdown in the header to select who you are
-- This determines who creates tasks and adds notes
-
-### 3. Create a Project
-- Click **+ Project** button
-- Enter project name and description
-- Submit
-
-### 4. Add Tasks
-- Click on a project card to open it
-- Click **+ Add Task**
-- Fill in task details:
-  - Title and description
-  - Status (starting, in progress, ongoing, or done)
-  - Priority (low, medium, high)
-  - Assign to a user (optional)
-  - Set estimated completion date/time (optional)
-- Submit
-
-### 5. Manage Tasks
-- Click on any task card to view details
-- Change status with the status buttons
-- Update estimated completion time
-- Upload images (📷 Upload Images button)
-- Add notes and comments
-- View complete timeline
-
-## Home Assistant Integration
-
-### Events
-
-TaskMaster fires these events that can trigger automations:
-
-#### `taskmaster_task_created`
-```yaml
-event_data:
-  task_id: 123
-  project_id: 1
-  title: "Task title"
-  status: "starting"
-  assigned_to: 1
+# Frontend (React + Vite)
+cd frontend
+npm install
+npm run dev                               # dev server on :5173, proxies /api
+npm run build                             # outputs to web/dist (committed)
 ```
 
-#### `taskmaster_task_status_changed`
-```yaml
-event_data:
-  task_id: 123
-  title: "Task title"
-  old_status: "starting"
-  new_status: "in_progress"
-```
+## 🤖 Automation examples
 
-#### `taskmaster_image_uploaded`
-```yaml
-event_data:
-  task_id: 123
-  image_id: 456
-  user_id: 1
-  filename: "kitchen_before.jpg"
-```
-
-### Example Automations
-
-#### Send notification when task is completed
 ```yaml
 automation:
-  - alias: "Task Completed"
+  - alias: "Notify when something is Done"
     trigger:
       - platform: event
-        event_type: taskmaster_task_status_changed
+        event_type: taskmaster_status_changed
         event_data:
-          new_status: done
+          new_status: Done
     action:
       - service: notify.mobile_app_your_phone
         data:
-          title: "Task Done! 🎉"
-          message: "{{ trigger.event.data.title }} is complete"
+          title: "Task done 🎉"
+          message: "{{ trigger.event.data.name }} on {{ trigger.event.data.board }}"
 ```
 
-#### Turn on desk light when starting work
-```yaml
-automation:
-  - alias: "Work Mode"
-    trigger:
-      - platform: event
-        event_type: taskmaster_task_status_changed
-        event_data:
-          new_status: in_progress
-    action:
-      - service: light.turn_on
-        target:
-          entity_id: light.desk_lamp
-        data:
-          brightness: 255
-```
+See `HOMEASSISTANT_CONFIG.yaml` for more examples.
 
-## API Documentation
+## 🔌 API
 
-### Base URL
-```
-http://localhost:8099/api
-```
+All endpoints live under `/api` and use session-cookie authentication (`POST /api/auth/login`). Highlights:
 
-### Endpoints
+| Area | Endpoints |
+|---|---|
+| Auth | `POST /api/auth/setup` · `login` · `logout` · `GET /api/auth/status` |
+| Boards | `GET/POST /api/boards` · `GET/PUT/DELETE /api/boards/:id` |
+| Groups & columns | `POST /api/boards/:id/groups` · `POST /api/boards/:id/columns` · `PUT/DELETE /api/groups/:id`, `/api/columns/:id` |
+| Items | `POST /api/boards/:id/items` · `GET/PUT/DELETE /api/items/:id` · `PUT /api/items/:id/values/:columnId` |
+| Collaboration | `POST /api/items/:id/updates` · `POST /api/items/:id/files` · `GET /api/notifications` |
+| Views | `GET /api/my-work` · `GET /api/search?q=` · `GET /api/stats` |
+| Real-time | `GET /api/events` (server-sent events) |
 
-#### Users
-- `GET /api/users` - List all users
-- `POST /api/users` - Create user
-- `GET /api/users/:id` - Get user
-- `PUT /api/users/:id` - Update user
-- `DELETE /api/users/:id` - Delete user
+## 🗺️ Roadmap
 
-#### Projects
-- `GET /api/projects` - List all projects
-- `POST /api/projects` - Create project
-- `GET /api/projects/:id` - Get project
-- `PUT /api/projects/:id` - Update project
-- `DELETE /api/projects/:id` - Delete project
+- Automations builder (when X happens → do Y), monday-style
+- Calendar & timeline (Gantt) views
+- LDAP / Active Directory login
+- Mobile app (PWA)
+- Email notifications
 
-#### Tasks
-- `GET /api/projects/:id/tasks` - List project tasks
-- `POST /api/projects/:id/tasks` - Create task
-- `GET /api/tasks/:id` - Get task
-- `PUT /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
+## 📦 Data
 
-#### Notes
-- `GET /api/tasks/:id/notes` - List task notes
-- `POST /api/tasks/:id/notes` - Create note
-- `PUT /api/notes/:id` - Update note
-- `DELETE /api/notes/:id` - Delete note
-
-#### Images
-- `GET /api/tasks/:id/images` - List task images
-- `POST /api/tasks/:id/images` - Upload image
-- `DELETE /api/images/:id` - Delete image
-- `GET /api/images/:id/download` - Download/view image
-
-#### Statistics
-- `GET /api/stats` - Get statistics
-
-## Status Colors
-
-| Status | Color | Hex | Description |
-|--------|-------|-----|-------------|
-| Starting | Blue | #3498db | Task is just beginning |
-| In Progress | Orange | #f39c12 | Actively working on it |
-| Ongoing | Purple | #9b59b6 | Continuous work |
-| Done | Green | #27ae60 | Task completed |
-
-## Data Storage
-
-TaskMaster uses SQLite for data storage. The database is located at:
-```
-/data/taskmaster.db
-```
-
-Images are stored at:
-```
-/data/uploads/
-```
-
-This ensures your data persists across add-on restarts.
+Everything is stored in `/data` (SQLite database + uploads), which persists across restarts and updates.
 
 ## License
 
-MIT License
-
-## Support
-
-For issues and feature requests, please use the GitHub issue tracker.
-
-## Version History
-
-### v2.0.0
-- Added date/time tracking (created, started, estimated, completed)
-- Added image upload system
-- Added time remaining calculator
-- Added overdue warnings
-- Added image gallery view
-- Improved task detail view
-
-### v1.0.0 (Initial Release)
-- Multi-user collaboration
-- Project and task management
-- Notes system
-- Color-coded statuses
-- Home Assistant integration
-- REST API
-- Web interface
+MIT

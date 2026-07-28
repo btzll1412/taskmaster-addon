@@ -1,0 +1,18 @@
+# Standalone deployment (no Home Assistant required):
+#   docker compose up -d
+# Then open http://localhost:8099
+services:
+  taskmaster:
+    build:
+      context: .
+      args:
+        BUILD_FROM: python:3.11-alpine
+    container_name: taskmaster
+    ports:
+      - "8099:8099"
+    volumes:
+      - taskmaster_data:/data
+    restart: unless-stopped
+
+volumes:
+  taskmaster_data:

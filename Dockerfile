@@ -1,23 +1,19 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=python:3.11-alpine
 FROM $BUILD_FROM
 
-# Install requirements
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    py3-flask \
-    py3-sqlalchemy
-
-# Copy files
+# Python dependencies
 COPY requirements.txt /tmp/
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
-# Copy application
+# Application (frontend is pre-built into web/dist)
 WORKDIR /app
 COPY run.sh /
 COPY app.py /app/
-COPY web/ /app/web/
+COPY backend/ /app/backend/
+COPY web/dist/ /app/web/dist/
 
 RUN chmod a+x /run.sh
+
+EXPOSE 8099
 
 CMD [ "/run.sh" ]
