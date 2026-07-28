@@ -462,3 +462,54 @@
 
 /* ---------- Overlay popover ---------- */
 .popover-overlay { position: fixed; box-shadow: var(--shadow-lg); }
+
+/* ---------- Companies nav + directory ---------- */
+.companies-nav { display: flex; align-items: center; cursor: pointer; }
+.companies-nav-label { flex: 1; }
+.companies-chevron { width: 22px; height: 22px; font-size: 11px; }
+.companies-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.company-tile {
+  display: flex; flex-direction: column; gap: 8px; text-align: left;
+  background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px;
+  border-top: 4px solid var(--primary); padding: 16px 18px;
+  transition: box-shadow .15s, transform .15s;
+}
+.company-tile:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+.company-tile-head { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.company-tile-icon { font-size: 22px; }
+.company-tile-meta { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.company-tile-counts { font-size: 12px; }
+
+/* ---------- Site picker (searchable multi-select) ---------- */
+.site-picker { display: flex; flex-direction: column; gap: 8px; }
+.site-search { width: 100%; }
+.site-list {
+  max-height: 220px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface);
+}
+.site-option {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  cursor: pointer; border-bottom: 1px solid var(--border-light); font-size: 14px;
+}
+.site-option:last-child { border-bottom: none; }
+.site-option:hover { background: var(--hover); }
+.site-option.selected { background: rgba(0, 115, 234, .08); }
+.site-option input { width: 16px; height: 16px; }
+.site-option-name { flex: 1; }
+.site-option .check { color: var(--primary); font-weight: 700; }
+.site-chips { margin-top: 2px; }
+.site-chip { background: var(--primary); display: inline-flex; align-items: center; gap: 4px; }
+.site-chip .chip-x { color: rgba(255,255,255,.85); }
+.site-chip .chip-x:hover { color: #fff; }
+
+/* ---------- Role builder ---------- */
+.caps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 700px) { .caps-grid { grid-template-columns: 1fr; } }
+.cap-option {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+.cap-option:hover { background: var(--hover); }
+.cap-option.selected { border-color: var(--primary); background: rgba(0, 115, 234, .08); }
+.role-row .role-caps { flex: 1; display: flex; gap: 4px; flex-wrap: wrap; }
+.cap-chip { background: var(--primary); font-size: 11px; }

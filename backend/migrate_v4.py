@@ -30,6 +30,8 @@ def ensure_schema():
     if 'users' in tables:
         _ensure_column('users', 'company_id', 'company_id INTEGER')
         _ensure_column('users', 'custom_role_id', 'custom_role_id INTEGER')
+    if 'roles' in tables:
+        _ensure_column('roles', 'permissions', "permissions TEXT DEFAULT '[]'")
     if 'boards' in tables:
         _ensure_column('boards', 'department_id', 'department_id INTEGER')
     if 'items' in tables:

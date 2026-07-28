@@ -290,64 +290,59 @@ def delete_grant(actor, grant_id):
     return jsonify({'ok': True})
 
 
-# ---- Roles ----
-
-COMPANY_LEVELS = ('company_admin', 'member', 'viewer')
-STAFF_LEVELS = ('admin', 'member', 'viewer')
-
+# ---- Roles (universal, capability-based) ----
 
 @bp.get('/roles')
 @login_required
 def list_roles(user):
-    """Custom roles the actor may see/assign, plus the built-in levels."""
-    q = Role.query
-    if not perm.is_super(user):
-        if user.role == 'company_admin':
-            q = q.filter(Role.company_id == user.company_id)
-        elif user.role == 'admin':
-            managed = perm.managed_company_ids(user)
-            q = q.filter(Role.company_id.in_(managed) if managed else db.false())
-        else:
-            return jsonify({'roles': []})
-    return jsonify({'roles': [r.to_dict() for r in q.order_by(Role.name).all()]})
+    """Universal custom roles. Visible to anyone who can manage users."""
+    if not (user.role in ('super_admin', 'admin', 'company_admin')
+            or perm.has_cap(user, perm.CAP_USERS)):
+        return jsonify({'roles': [], 'capabilities': []})
+    roles = Role.query.order_by(Role.name).all()
+    return jsonify({
+        'roles': [r.to_dict() for r in roles],
+        'capabilities': sorted(perm.ALL_CAPS),
+    })
 
 
 @bp.post('/roles')
 @login_required
 def create_role(user):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only super admins can define roles'}), 403
     data = request.json or {}
     name = (data.get('name') or '').strip()
-    level = data.get('level')
-    company_id = data.get('company_id') or None
     if not name:
         return jsonify({'error': 'Role name is required'}), 400
-    if company_id:
-        if not db.session.get(Company, company_id):
-            return jsonify({'error': 'Company not found'}), 404
-        if level not in COMPANY_LEVELS:
-            return jsonify({'error': f'Company role level must be one of {COMPANY_LEVELS}'}), 400
-        if not perm.can_manage_company(user, company_id):
-            return jsonify({'error': 'No permission to manage this company'}), 403
-    else:
-        if level not in STAFF_LEVELS:
-            return jsonify({'error': f'IT staff role level must be one of {STAFF_LEVELS}'}), 400
-        if not perm.is_super(user):
-            return jsonify({'error': 'Only super admins can define IT staff roles'}), 403
-    r = Role(name=name, level=level, company_id=company_id)
+    perms = [p for p in (data.get('permissions') or []) if p in perm.ALL_CAPS]
+    r = Role(name=name, level='member', permissions=json.dumps(perms))
     db.session.add(r)
     db.session.commit()
     return jsonify({'role': r.to_dict()}), 201
 
 
+@bp.put('/roles/<int:role_id>')
+@login_required
+def update_role(user, role_id):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only super admins can edit roles'}), 403
+    r = Role.query.get_or_404(role_id)
+    data = request.json or {}
+    if data.get('name', '').strip():
+        r.name = data['name'].strip()
+    if 'permissions' in data:
+        r.permissions = json.dumps([p for p in data['permissions'] if p in perm.ALL_CAPS])
+    db.session.commit()
+    return jsonify({'role': r.to_dict()})
+
+
 @bp.delete('/roles/<int:role_id>')
 @login_required
 def delete_role(user, role_id):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only super admins can delete roles'}), 403
     r = Role.query.get_or_404(role_id)
-    if r.company_id:
-        if not perm.can_manage_company(user, r.company_id):
-            return jsonify({'error': 'No permission'}), 403
-    elif not perm.is_super(user):
-        return jsonify({'error': 'Only super admins can delete IT staff roles'}), 403
     User.query.filter_by(custom_role_id=r.id).update({'custom_role_id': None})
     db.session.delete(r)
     db.session.commit()

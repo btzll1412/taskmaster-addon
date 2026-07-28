@@ -15,7 +15,7 @@ export default function HomeView() {
   const isAdmin = isSuper || user.role === 'company_admin'
 
   const cards = ov ? [
-    ...(isSuper ? [{ icon: '🏛️', label: 'Companies', value: ov.companies, go: () => navigate({ page: 'admin', tab: 'companies' }) }] : []),
+    ...(isSuper ? [{ icon: '🏛️', label: 'Companies', value: ov.companies, go: () => navigate({ page: 'companies' }) }] : []),
     { icon: '🏢', label: 'Departments', value: ov.departments, go: () => navigate({ page: 'departments' }) },
     { icon: '📋', label: 'Jobs', value: ov.jobs, go: () => navigate({ page: 'jobs' }) },
     { icon: '🧩', label: 'Tasks', value: ov.tasks, go: () => navigate({ page: 'tasks' }) },

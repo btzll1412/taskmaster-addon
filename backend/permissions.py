@@ -9,16 +9,46 @@ Rules:
 """
 from .db import db
 from .models import (AccessGrant, Board, BoardColumn, Company, Department,
-                     Item, ItemValue, User)
+                     Item, ItemValue, Role, User)
+
+# Capability keys a role can carry
+CAP_CREATE = 'create_jobs'      # add jobs / sub-tasks
+CAP_EDIT = 'edit_jobs'          # change statuses/values, write updates, upload files
+CAP_BOARDS = 'manage_boards'    # create/edit boards, groups, columns, automations
+CAP_USERS = 'manage_users'      # create/manage users in own company
+CAP_ACCESS = 'manage_access'    # grant/revoke access in own company
+CAP_COMPANY = 'manage_company'  # edit company details / departments
+ALL_CAPS = {CAP_CREATE, CAP_EDIT, CAP_BOARDS, CAP_USERS, CAP_ACCESS, CAP_COMPANY}
+
+LEVEL_CAPS = {
+    'super_admin': ALL_CAPS,
+    'admin': ALL_CAPS,
+    'company_admin': ALL_CAPS,
+    'member': {CAP_CREATE, CAP_EDIT, CAP_BOARDS},
+    'viewer': set(),
+}
 
 
 def is_super(user):
     return user.role == 'super_admin'
 
 
+def caps(user):
+    """Effective capability set: custom role if assigned, else base level."""
+    if user.custom_role_id:
+        r = db.session.get(Role, user.custom_role_id)
+        if r:
+            return set(r.permission_list())
+    return LEVEL_CAPS.get(user.role, set())
+
+
+def has_cap(user, cap):
+    return cap in caps(user)
+
+
 def can_write(user):
-    """Viewers are read-only everywhere."""
-    return user.role != 'viewer'
+    """Users whose role carries no capabilities are read-only everywhere."""
+    return bool(caps(user))
 
 
 def user_grants(user):
@@ -143,7 +173,8 @@ def can_view_item(user, item):
 
 
 def can_edit_board(user, board):
-    return can_write(user) and board_access(user, board) == 'full'
+    """Structural board changes: groups, columns, automations, board settings."""
+    return has_cap(user, CAP_BOARDS) and board_access(user, board) == 'full'
 
 
 def can_manage_company(user, company_id):
@@ -151,7 +182,10 @@ def can_manage_company(user, company_id):
         return True
     if user.role == 'admin' and company_id in managed_company_ids(user):
         return True
-    return user.role == 'company_admin' and user.company_id == company_id
+    if user.role == 'company_admin' and user.company_id == company_id:
+        return True
+    # custom role carrying the manage-company capability, within own company
+    return user.company_id == company_id and has_cap(user, CAP_COMPANY)
 
 
 def can_manage_user(actor, target):
@@ -161,7 +195,10 @@ def can_manage_user(actor, target):
         return False
     if actor.role == 'admin':
         return target.company_id in managed_company_ids(actor)
-    return actor.role == 'company_admin' and target.company_id == actor.company_id
+    if actor.company_id and target.company_id == actor.company_id:
+        # company admins, or any company user whose role carries manage_users
+        return actor.role == 'company_admin' or has_cap(actor, CAP_USERS)
+    return False
 
 
 def accessible_companies(user):
@@ -249,4 +286,6 @@ def can_grant_in_company(actor, company_id):
         return True
     if actor.role == 'admin':
         return company_id in managed_company_ids(actor)
-    return actor.role == 'company_admin' and actor.company_id == company_id
+    if actor.company_id == company_id:
+        return actor.role == 'company_admin' or has_cap(actor, CAP_ACCESS)
+    return False

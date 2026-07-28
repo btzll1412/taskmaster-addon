@@ -67,8 +67,9 @@ def create_app():
             if request.path.startswith(allowed):
                 return None
         from .auth import current_user
+        from . import permissions as perm
         u = current_user()
-        if u and u.role == 'viewer':
+        if u and not perm.can_write(u):
             return jsonify({'error': 'Your role is view-only'}), 403
         return None
 

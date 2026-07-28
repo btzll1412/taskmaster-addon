@@ -12,22 +12,14 @@ const ROLE_LABEL = {
 }
 
 export default function AdminUsers() {
-  const { user, route } = useStore()
-  const [tab, setTab] = useState(
-    route.tab === 'companies' && user.role === 'super_admin' ? 'companies' : 'users')
+  const { user } = useStore()
   const isAdmin = ['super_admin', 'admin', 'company_admin'].includes(user.role)
 
   if (!isAdmin) return <div className="muted">Admin access required.</div>
 
   return (
     <div className="admin-view">
-      <div className="view-tabs admin-tabs">
-        <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>👥 Users & access</button>
-        {user.role === 'super_admin' && (
-          <button className={tab === 'companies' ? 'active' : ''} onClick={() => setTab('companies')}>🏛 Companies</button>
-        )}
-      </div>
-      {tab === 'users' ? <UsersTab /> : <CompaniesTab />}
+      <UsersTab />
     </div>
   )
 }
@@ -141,7 +133,7 @@ function NewUserModal({ me, workspace, onClose, onDone, showToast }) {
     ? [...(isSuper ? [['super_admin', 'Super admin'], ['admin', 'Admin (IT staff)']] : []),
        ['member', 'Member'], ['viewer', 'Viewer (read-only)']]
     : [['company_admin', 'Company admin'], ['member', 'Member'], ['viewer', 'Viewer (read-only)']]
-  const customRoles = roles.filter(r => (r.company_id || null) === targetCompany)
+  const customRoles = roles  // universal - assignable anywhere
   const chosenLevel = form.roleChoice.startsWith('level:')
     ? form.roleChoice.slice(6)
     : roles.find(r => r.id === Number(form.roleChoice.slice(7)))?.level
@@ -229,14 +221,8 @@ function NewUserModal({ me, workspace, onClose, onDone, showToast }) {
               </label>
             </div>
             {form.siteMode === 'specific' && (
-              <div className="sites-grid">
-                {workspace.companies.map(c => (
-                  <label key={c.id} className="radio-row">
-                    <input type="checkbox" checked={form.company_ids.includes(c.id)}
-                      onChange={() => toggleSite(c.id)} /> {c.name}
-                  </label>
-                ))}
-              </div>
+              <SitePicker companies={workspace.companies}
+                selected={form.company_ids} onToggle={toggleSite} />
             )}
             <p className="muted sites-hint">You can fine-tune down to departments, boards, or single jobs later via 🔑 Access.</p>
           </div>
@@ -359,93 +345,37 @@ function GrantsModal({ target, onClose, showToast }) {
   )
 }
 
-/* ================= Companies ================= */
-
-function CompaniesTab() {
-  const { workspace, refreshBoards, showToast } = useStore()
-  const [newDeptFor, setNewDeptFor] = useState(null)
-  const [name, setName] = useState('')
-
-  async function addCompany(e) {
-    e.preventDefault()
-    if (!name.trim()) return
-    try {
-      await api.post('/api/companies', { name: name.trim() })
-      setName(''); refreshBoards()
-    } catch (err) { showToast(err.message) }
-  }
-
-  async function removeCompany(c) {
-    if (!confirm(`Delete company "${c.name}"? (Departments must be removed first)`)) return
-    try { await api.del(`/api/companies/${c.id}`); refreshBoards() }
-    catch (e) { showToast(e.message) }
-  }
-
-  async function removeDept(d) {
-    if (!confirm(`Delete department "${d.name}"? (Boards must be removed first)`)) return
-    try { await api.del(`/api/departments/${d.id}`); refreshBoards() }
-    catch (e) { showToast(e.message) }
-  }
+/** Big searchable multi-select for company (site) access. */
+function SitePicker({ companies, selected, onToggle }) {
+  const [q, setQ] = useState('')
+  const filtered = companies.filter(c =>
+    !q.trim() || c.name.toLowerCase().includes(q.trim().toLowerCase()))
+  const selectedCompanies = companies.filter(c => selected.includes(c.id))
 
   return (
-    <>
-      <div className="admin-head">
-        <div>
-          <h2>Companies & departments</h2>
-          <p className="muted">One company per customer. Departments hold their boards.</p>
-        </div>
-        <form className="form-row" onSubmit={addCompany}>
-          <input placeholder="New company name" value={name} onChange={e => setName(e.target.value)} />
-          <button className="btn btn-primary">＋ Add</button>
-        </form>
-      </div>
-
-      <div className="company-cards">
-        {workspace.companies.map(c => (
-          <div key={c.id} className="company-card">
-            <div className="company-card-head">
-              <strong>🏛 {c.name}</strong>
-              <div>
-                <button className="btn btn-small" onClick={() => setNewDeptFor(c)}>＋ Department</button>
-                <button className="icon-btn" title="Delete company" onClick={() => removeCompany(c)}>🗑️</button>
-              </div>
-            </div>
-            <div className="dept-chips">
-              {c.departments.map(d => (
-                <span key={d.id} className="dept-chip">
-                  {d.icon} {d.name}
-                  <span className="muted"> · {d.boards.length} board{d.boards.length === 1 ? '' : 's'}</span>
-                  <button className="chip-x" onClick={() => removeDept(d)}>✕</button>
-                </span>
-              ))}
-              {c.departments.length === 0 && <span className="muted">No departments yet.</span>}
-            </div>
-          </div>
+    <div className="site-picker">
+      <input className="site-search" placeholder="🔍 Search sites…"
+        value={q} onChange={e => setQ(e.target.value)} />
+      <div className="site-list">
+        {filtered.map(c => (
+          <label key={c.id} className={`site-option ${selected.includes(c.id) ? 'selected' : ''}`}>
+            <input type="checkbox" checked={selected.includes(c.id)} onChange={() => onToggle(c.id)} />
+            <span className="site-option-name">🏛️ {c.name}</span>
+            {selected.includes(c.id) && <span className="check">✓</span>}
+          </label>
         ))}
+        {filtered.length === 0 && <div className="muted popover-hint">No sites match "{q}"</div>}
       </div>
-
-      {newDeptFor && (
-        <Modal title={`New department — ${newDeptFor.name}`} onClose={() => setNewDeptFor(null)}>
-          <NewDeptForm company={newDeptFor} onDone={() => { setNewDeptFor(null); refreshBoards() }} showToast={showToast} />
-        </Modal>
+      {selectedCompanies.length > 0 && (
+        <div className="chip-row site-chips">
+          {selectedCompanies.map(c => (
+            <span key={c.id} className="chip site-chip">
+              {c.name}
+              <button type="button" className="chip-x" onClick={() => onToggle(c.id)}>✕</button>
+            </span>
+          ))}
+        </div>
       )}
-    </>
-  )
-}
-
-function NewDeptForm({ company, onDone, showToast }) {
-  const [name, setName] = useState('')
-  return (
-    <form className="form-col" onSubmit={async (e) => {
-      e.preventDefault()
-      if (!name.trim()) return
-      try {
-        await api.post(`/api/companies/${company.id}/departments`, { name: name.trim() })
-        onDone()
-      } catch (err) { showToast(err.message) }
-    }}>
-      <input placeholder="Department name" value={name} autoFocus onChange={e => setName(e.target.value)} required />
-      <button className="btn btn-primary">Create department</button>
-    </form>
+    </div>
   )
 }
