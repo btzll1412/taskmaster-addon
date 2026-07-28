@@ -89,12 +89,23 @@ export default function BoardView() {
         </div>
         {board.description && <p className="board-desc">{board.description}</p>}
 
+        <div className="view-tabs">
+          <button className={view === 'table' ? 'active' : ''} onClick={() => switchView('table')}>
+            <span className="tab-icon">🏠</span> Main table
+          </button>
+          <button className={view === 'kanban' ? 'active' : ''} onClick={() => switchView('kanban')}>
+            <span className="tab-icon">🗂</span> Kanban
+          </button>
+        </div>
+
         <div className="board-toolbar">
-          <div className="view-tabs">
-            <button className={view === 'table' ? 'active' : ''} onClick={() => switchView('table')}>☰ Table</button>
-            <button className={view === 'kanban' ? 'active' : ''} onClick={() => switchView('kanban')}>🗂 Kanban</button>
-          </div>
-          <input className="board-search" placeholder="🔍 Filter items…"
+          <button className="btn btn-primary" onClick={async () => {
+            try {
+              await api.post(`/api/boards/${board.id}/items`, { name: 'New item' })
+              await refreshBoard()
+            } catch (e) { showToast(e.message) }
+          }}>New item</button>
+          <input className="board-search" placeholder="🔍 Search this board"
             value={search} onChange={e => setSearch(e.target.value)} />
           <div className="person-filter">
             {activeUsers.slice(0, 8).map(u => (
@@ -106,8 +117,9 @@ export default function BoardView() {
             ))}
           </div>
           {(search || personFilter) && (
-            <button className="link-btn" onClick={() => { setSearch(''); setPersonFilter(null) }}>Clear</button>
+            <button className="link-btn" onClick={() => { setSearch(''); setPersonFilter(null) }}>Clear filters</button>
           )}
+          <span className="toolbar-count muted">{filtered.length} / {items.length} items</span>
         </div>
       </div>
 

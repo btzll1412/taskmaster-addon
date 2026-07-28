@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { Modal, EmojiPicker } from './ui'
 
 export default function Sidebar() {
-  const { boards, route, navigate, refreshBoards, openBoard, showToast } = useStore()
+  const { boards, route, navigate, refreshBoards, openBoard, showToast, sidebarMobile, toggleSidebarMobile } = useStore()
   const [showNew, setShowNew] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [name, setName] = useState('')
@@ -32,7 +32,9 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
+    <>
+    {sidebarMobile && <div className="sidebar-backdrop" onClick={toggleSidebarMobile} />}
+    <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''} ${sidebarMobile ? 'mobile-open' : ''}`}>
       <div className="sidebar-brand" onClick={toggle} title="Toggle sidebar">
         <span className="brand-icon">✅</span>
         {!collapsed && <span className="brand-name">TaskMaster</span>}
@@ -98,5 +100,6 @@ export default function Sidebar() {
         </Modal>
       )}
     </aside>
+    </>
   )
 }

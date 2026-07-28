@@ -21,6 +21,9 @@ export const useStore = create((set, get) => ({
   route: { page: 'home', boardId: null }, // home | board | mywork | admin
   panelItemId: null,
   toast: null,
+  sidebarMobile: false,
+
+  toggleSidebarMobile() { set(s => ({ sidebarMobile: !s.sidebarMobile })) },
 
   async init() {
     const st = await api.get('/api/auth/status')
@@ -50,7 +53,7 @@ export const useStore = create((set, get) => ({
   },
 
   navigate(route) {
-    set({ route, panelItemId: null })
+    set({ route, panelItemId: null, sidebarMobile: false })
     localStorage.setItem('tm-route', JSON.stringify(route))
     if (route.page === 'board') get().openBoard(route.boardId, { keepRoute: true })
     if (route.page === 'home') get().refreshStats()

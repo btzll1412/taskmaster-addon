@@ -115,10 +115,44 @@ function GroupTable({ group, groups, columns, items, users, board, act, setValue
                   </form>
                 </td>
               </tr>
+              {items.length > 0 && (
+                <tr className="group-footer">
+                  <td className="col-name" />
+                  {columns.map(col => (
+                    <td key={col.id}>
+                      {(col.type === 'status' || col.type === 'priority') &&
+                        <DistributionBar column={col} items={items} />}
+                    </td>
+                  ))}
+                  <td className="col-add" />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+/** monday-style "battery": proportional colored segments of label usage in a group. */
+function DistributionBar({ column, items }) {
+  const labels = column.settings?.labels || []
+  const counts = new Map()
+  for (const item of items) {
+    const id = item.values[String(column.id)]?.id ?? null
+    counts.set(id, (counts.get(id) || 0) + 1)
+  }
+  const segments = [
+    ...labels.filter(l => counts.get(l.id)).map(l => ({ ...l, n: counts.get(l.id) })),
+    ...(counts.get(null) ? [{ id: null, label: 'No status', color: '#c4c4c4', n: counts.get(null) }] : []),
+  ]
+  return (
+    <div className="dist-bar">
+      {segments.map(s => (
+        <div key={s.id ?? 'none'} className="dist-seg" style={{ flex: s.n, background: s.color }}
+          title={`${s.label} ${s.n}/${items.length}`} />
+      ))}
     </div>
   )
 }
