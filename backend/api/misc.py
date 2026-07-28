@@ -4,8 +4,8 @@ from .. import ha, realtime
 from .. import permissions as perm
 from ..auth import login_required
 from ..db import db
-from ..models import (Activity, Board, BoardColumn, BoardGroup, Item,
-                      ItemValue, Notification, User)
+from ..models import (Activity, Board, BoardColumn, BoardGroup, Company,
+                      Department, Item, ItemValue, Notification, User)
 from ..services import values_for_items
 
 bp = Blueprint('misc', __name__, url_prefix='/api')
@@ -137,11 +137,43 @@ def stats(user):
         'friendly_name': 'TaskMaster items', 'done': done, 'boards': boards_count,
     })
 
+    # High-level overview counts, scoped to what this user can access
+    if perm.is_super(user):
+        overview = {
+            'companies': Company.query.count(),
+            'departments': Department.query.count(),
+            'boards': Board.query.filter_by(archived=False).count(),
+            'jobs': Item.query.filter(Item.parent_id.is_(None)).count(),
+            'tasks': Item.query.filter(Item.parent_id.isnot(None)).count(),
+            'users': User.query.filter_by(is_active=True).count(),
+        }
+    else:
+        companies = perm.accessible_companies(user)
+        dept_count = (Department.query.filter(
+            Department.company_id.in_([c.id for c in companies])).count()
+            if companies else 0)
+        jobs = (Item.query.filter(Item.board_id.in_(board_ids),
+                                  Item.parent_id.is_(None)).count()
+                if board_ids else 0)
+        tasks = (Item.query.filter(Item.board_id.in_(board_ids),
+                                   Item.parent_id.isnot(None)).count()
+                 if board_ids else 0)
+        overview = {
+            'companies': len(companies),
+            'departments': dept_count,
+            'boards': boards_count,
+            'jobs': jobs,
+            'tasks': tasks,
+            'users': users_count,
+        }
+
     return jsonify({
         'boards': boards_count,
         'items': items_count,
         'done': done,
         'users': users_count,
+        'overview': overview,
+        'is_super': perm.is_super(user),
         'recent_activity': [a.to_dict() for a in recent],
         'activity_users': users,
         'board_names': board_names,

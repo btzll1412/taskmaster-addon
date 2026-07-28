@@ -10,8 +10,9 @@ const ROLE_LABEL = {
 }
 
 export default function AdminUsers() {
-  const { user } = useStore()
-  const [tab, setTab] = useState('users')
+  const { user, route } = useStore()
+  const [tab, setTab] = useState(
+    route.tab === 'companies' && user.role === 'super_admin' ? 'companies' : 'users')
   const isAdmin = user.role === 'super_admin' || user.role === 'company_admin'
 
   if (!isAdmin) return <div className="muted">Admin access required.</div>

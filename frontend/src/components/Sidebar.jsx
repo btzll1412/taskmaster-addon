@@ -3,27 +3,31 @@ import { api } from '../api'
 import { useStore } from '../store'
 import { Modal, EmojiPicker } from './ui'
 
+function usePersistedSet(key) {
+  const [set, setSet] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')) } catch { return new Set() }
+  })
+  function toggle(id) {
+    const next = new Set(set)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setSet(next)
+    localStorage.setItem(key, JSON.stringify([...next]))
+  }
+  return [set, toggle]
+}
+
 export default function Sidebar() {
   const { user, workspace, route, navigate, refreshBoards, openBoard, showToast,
     sidebarMobile, toggleSidebarMobile } = useStore()
   const [newBoardDept, setNewBoardDept] = useState(null)
   const [newDeptCompany, setNewDeptCompany] = useState(null)
   const [showNewCompany, setShowNewCompany] = useState(false)
-  const [collapsedCompanies, setCollapsedCompanies] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('tm-collapsed-companies') || '[]') } catch { return [] }
-  })
+  const [closedCompanies, toggleCompany] = usePersistedSet('tm-closed-companies')
+  const [closedDepts, toggleDept] = usePersistedSet('tm-closed-depts')
 
   const canManage = (companyId) =>
     user.role === 'super_admin' ||
     (user.role === 'company_admin' && user.company_id === companyId)
-
-  function toggleCompany(id) {
-    const next = collapsedCompanies.includes(id)
-      ? collapsedCompanies.filter(c => c !== id)
-      : [...collapsedCompanies, id]
-    setCollapsedCompanies(next)
-    localStorage.setItem('tm-collapsed-companies', JSON.stringify(next))
-  }
 
   return (
     <>
@@ -47,37 +51,38 @@ export default function Sidebar() {
 
         <div className="sidebar-section">
           {workspace.companies.map(c => (
-            <div key={c.id} className="company-block">
-              <div className="company-head" style={{ '--company-color': c.color }}>
-                <button className="company-toggle" onClick={() => toggleCompany(c.id)}>
-                  {collapsedCompanies.includes(c.id) ? '▸' : '▾'}
+            <div key={c.id} className="tree-company">
+              <div className="tree-row tree-company-row">
+                <button className="tree-chevron" onClick={() => toggleCompany(c.id)}>
+                  {closedCompanies.has(c.id) ? '▸' : '▾'}
                 </button>
-                <span className="company-name" title={c.name}>{c.name}</span>
+                <span className="tree-label company-label" title={c.name}
+                  onClick={() => toggleCompany(c.id)}>🏛️ {c.name}</span>
                 {canManage(c.id) && (
                   <button className="icon-btn tree-add" title="New department"
                     onClick={() => setNewDeptCompany(c)}>＋</button>
                 )}
               </div>
-              {!collapsedCompanies.includes(c.id) && c.departments.map(d => (
-                <div key={d.id} className="dept-block">
-                  <div className="dept-head">
-                    <span className="dept-name" title={d.name}>{d.icon} {d.name}</span>
-                    {(canManage(c.id) || d.boards.length > 0) && (
-                      <button className="icon-btn tree-add" title="New board"
-                        onClick={() => setNewBoardDept(d)}>＋</button>
-                    )}
-                  </div>
-                  {d.boards.filter(b => !b.archived).map(b => (
-                    <button key={b.id}
-                      className={`nav-item board-item ${route.page === 'board' && route.boardId === b.id ? 'active' : ''}`}
-                      onClick={() => openBoard(b.id)} title={b.name}>
-                      <span className="nav-icon">{b.icon}</span>
-                      <span className="board-item-name">{b.name}</span>
-                      {b.access === 'partial'
-                        ? <span className="board-count" title="You can see specific items only">🔒</span>
-                        : b.items_count > 0 && <span className="board-count">{b.items_count}</span>}
+
+              {!closedCompanies.has(c.id) && c.departments.map(d => (
+                <div key={d.id} className="tree-dept">
+                  <div className="tree-row tree-dept-row">
+                    <button className="tree-chevron" onClick={() => toggleDept(d.id)}>
+                      {closedDepts.has(d.id) ? '▸' : '▾'}
                     </button>
+                    <span className="tree-label" title={d.name}
+                      onClick={() => toggleDept(d.id)}>{d.icon} {d.name}</span>
+                    <button className="icon-btn tree-add" title="New board"
+                      onClick={() => setNewBoardDept(d)}>＋</button>
+                  </div>
+                  {!closedDepts.has(d.id) && d.boards.filter(b => !b.archived).map(b => (
+                    <BoardNode key={b.id} board={b}
+                      active={route.page === 'board' && route.boardId === b.id}
+                      onOpen={() => openBoard(b.id)} showToast={showToast} />
                   ))}
+                  {!closedDepts.has(d.id) && d.boards.filter(b => !b.archived).length === 0 && (
+                    <div className="tree-empty muted">no boards</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -125,6 +130,51 @@ export default function Sidebar() {
         )}
       </aside>
     </>
+  )
+}
+
+/** Board leaf that can expand one level deeper to list its jobs. */
+function BoardNode({ board, active, onOpen, showToast }) {
+  const { openBoard, openItem, panelItemId } = useStore()
+  const [expanded, setExpanded] = useState(false)
+  const [jobs, setJobs] = useState(null)
+
+  async function toggle(e) {
+    e.stopPropagation()
+    if (expanded) { setExpanded(false); return }
+    setExpanded(true)
+    try {
+      setJobs((await api.get(`/api/boards/${board.id}/items`)).items)
+    } catch (err) { showToast(err.message); setExpanded(false) }
+  }
+
+  return (
+    <div className="tree-board">
+      <div className={`tree-row tree-board-row ${active ? 'active' : ''}`} onClick={onOpen} title={board.name}>
+        <button className="tree-chevron" onClick={toggle}>{expanded ? '▾' : '▸'}</button>
+        <span className="tree-label">
+          <span className="nav-icon">{board.icon}</span>{board.name}
+        </span>
+        {board.access === 'partial'
+          ? <span className="board-count" title="You can see specific jobs only">🔒</span>
+          : board.items_count > 0 && <span className="board-count">{board.items_count}</span>}
+      </div>
+      {expanded && (
+        <div className="tree-jobs">
+          {jobs === null && <div className="tree-empty muted">loading…</div>}
+          {jobs?.length === 0 && <div className="tree-empty muted">no jobs yet</div>}
+          {jobs?.map(j => (
+            <button key={j.id}
+              className={`tree-row tree-job-row ${active && panelItemId === j.id ? 'active' : ''}`}
+              title={j.name}
+              onClick={() => { openBoard(board.id); openItem(j.id) }}>
+              <span className="job-dot" style={{ background: j.color || 'var(--border)' }} />
+              <span className="tree-label">{j.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
