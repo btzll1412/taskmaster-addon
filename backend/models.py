@@ -227,10 +227,12 @@ class Activity(db.Model):
     description = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow)
 
+    # Index names must not collide with the v2 indexes that may still exist in
+    # the same SQLite file (idx_activity_* on the old activity_log table).
     __table_args__ = (
-        db.Index('idx_activity_board', 'board_id'),
-        db.Index('idx_activity_item', 'item_id'),
-        db.Index('idx_activity_created', 'created_at'),
+        db.Index('idx_v3_activity_board', 'board_id'),
+        db.Index('idx_v3_activity_item', 'item_id'),
+        db.Index('idx_v3_activity_created', 'created_at'),
     )
 
     def to_dict(self):
