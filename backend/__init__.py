@@ -46,10 +46,11 @@ def create_app():
     from . import models  # noqa: F401  (register models)
     with app.app_context():
         db.create_all()
+        from .migrate_v4 import ensure_schema, migrate_v4_data
+        ensure_schema()  # column additions must precede any ORM queries
         from .migrate_v2 import migrate_v2_if_needed
         migrate_v2_if_needed()
-        from .migrate_v4 import migrate_v4
-        migrate_v4()
+        migrate_v4_data()
 
     from .api import register_blueprints
     register_blueprints(app)

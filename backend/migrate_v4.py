@@ -22,7 +22,9 @@ def _ensure_column(table, column, ddl):
         print(f'TaskMaster: added {table}.{column}')
 
 
-def migrate_v4():
+def ensure_schema():
+    """Add new columns to tables from older deployments. Must run BEFORE any
+    ORM query touches these tables (including the v2 data migration)."""
     inspector = inspect(db.engine)
     tables = set(inspector.get_table_names())
     if 'users' in tables:
@@ -32,6 +34,8 @@ def migrate_v4():
     if 'items' in tables:
         _ensure_column('items', 'parent_id', 'parent_id INTEGER')
 
+
+def migrate_v4_data():
     # Legacy role names
     upgraded = User.query.filter_by(role='admin').all()
     for u in upgraded:
