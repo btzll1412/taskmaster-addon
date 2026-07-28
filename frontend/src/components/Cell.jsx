@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Avatar, AvatarStack, Popover, fmtDate, dueClass } from './ui'
+import React, { useRef, useState } from 'react'
+import { Avatar, AvatarStack, OverlayPopover, fmtDate, dueClass } from './ui'
 
 const LABEL_COLORS = ['#00c875', '#fdab3d', '#e2445c', '#579bfc', '#a25ddc', '#66ccff', '#ff642e', '#c4c4c4', '#333333', '#ff158a', '#037f4c', '#cab641']
 
@@ -48,12 +48,13 @@ function StatusCell({ column, value, onChange, onUpdateColumn, editing, setEditi
   const labels = column.settings?.labels || []
   const current = labels.find(l => l.id === value?.id)
   const [managing, setManaging] = useState(false)
+  const anchor = useRef(null)
   return (
-    <div className="cell cell-status" style={{ background: current?.color || 'var(--cell-empty)' }}
+    <div ref={anchor} className="cell cell-status" style={{ background: current?.color || 'var(--cell-empty)' }}
       onClick={() => setEditing(true)}>
       <span className={current ? 'status-text' : 'status-placeholder'}>{current?.label || ''}</span>
       {editing && (
-        <Popover onClose={() => { setEditing(false); setManaging(false) }} width={220}>
+        <OverlayPopover anchorRef={anchor} onClose={() => { setEditing(false); setManaging(false) }} width={230}>
           {!managing ? (
             <>
               <div className="label-list">
@@ -76,7 +77,7 @@ function StatusCell({ column, value, onChange, onUpdateColumn, editing, setEditi
               onSave={(next) => { onUpdateColumn({ ...column.settings, labels: next }); setManaging(false) }}
               onCancel={() => setManaging(false)} />
           )}
-        </Popover>
+        </OverlayPopover>
       )}
     </div>
   )
@@ -117,17 +118,18 @@ function LabelEditor({ labels, onSave, onCancel }) {
 function PeopleCell({ value, users, onChange, editing, setEditing, compact }) {
   const ids = value?.user_ids || []
   const selected = users.filter(u => ids.includes(u.id))
+  const anchor = useRef(null)
   function toggle(uid) {
     const next = ids.includes(uid) ? ids.filter(i => i !== uid) : [...ids, uid]
     onChange(next.length ? { user_ids: next } : null)
   }
   return (
-    <div className="cell cell-people" onClick={() => setEditing(true)}>
+    <div ref={anchor} className="cell cell-people" onClick={() => setEditing(true)}>
       {selected.length > 0
         ? <AvatarStack users={selected} size={compact ? 22 : 26} />
         : <span className="cell-empty-icon">👤</span>}
       {editing && (
-        <Popover onClose={() => setEditing(false)} width={230}>
+        <OverlayPopover anchorRef={anchor} onClose={() => setEditing(false)} width={230}>
           <div className="people-list">
             {users.filter(u => u.is_active).map(u => (
               <button key={u.id} className={`people-option ${ids.includes(u.id) ? 'selected' : ''}`}
@@ -138,7 +140,7 @@ function PeopleCell({ value, users, onChange, editing, setEditing, compact }) {
               </button>
             ))}
           </div>
-        </Popover>
+        </OverlayPopover>
       )}
     </div>
   )
@@ -146,15 +148,16 @@ function PeopleCell({ value, users, onChange, editing, setEditing, compact }) {
 
 function DateCell({ value, onChange, editing, setEditing }) {
   const date = value?.date
+  const anchor = useRef(null)
   return (
-    <div className={`cell cell-date ${dueClass(date)}`} onClick={() => setEditing(true)}>
+    <div ref={anchor} className={`cell cell-date ${dueClass(date)}`} onClick={() => setEditing(true)}>
       {date ? fmtDate(date) : <span className="cell-empty-icon">📅</span>}
       {editing && (
-        <Popover onClose={() => setEditing(false)} width={220}>
+        <OverlayPopover anchorRef={anchor} onClose={() => setEditing(false)} width={230}>
           <input type="date" autoFocus defaultValue={date || ''}
             onChange={e => { if (e.target.value) { onChange({ date: e.target.value }); setEditing(false) } }} />
           {date && <button className="link-btn" onClick={() => { onChange(null); setEditing(false) }}>Clear date</button>}
-        </Popover>
+        </OverlayPopover>
       )}
     </div>
   )
@@ -220,15 +223,16 @@ function DropdownCell({ column, value, onChange, onUpdateColumn, editing, setEdi
     setNewOpt('')
   }
 
+  const anchor = useRef(null)
   return (
-    <div className="cell cell-dropdown" onClick={() => setEditing(true)}>
+    <div ref={anchor} className="cell cell-dropdown" onClick={() => setEditing(true)}>
       {selected.length > 0
         ? <span className="chip-row">{selected.map(o => (
           <span key={o.id} className="chip" style={{ background: o.color }}>{o.label}</span>
         ))}</span>
         : <span className="cell-empty-icon">＋</span>}
       {editing && (
-        <Popover onClose={() => setEditing(false)} width={230}>
+        <OverlayPopover anchorRef={anchor} onClose={() => setEditing(false)} width={230}>
           <div className="people-list">
             {options.map(o => (
               <button key={o.id} className={`people-option ${ids.includes(o.id) ? 'selected' : ''}`}
@@ -246,7 +250,7 @@ function DropdownCell({ column, value, onChange, onUpdateColumn, editing, setEdi
               <button className="btn btn-small" onClick={createOption}>Add</button>
             </div>
           )}
-        </Popover>
+        </OverlayPopover>
       )}
     </div>
   )

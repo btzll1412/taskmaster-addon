@@ -58,10 +58,6 @@ export default function Sidebar() {
                 </button>
                 <span className="tree-label company-label" title={c.name}
                   onClick={() => navigate({ page: 'company', companyId: c.id })}>🏛️ {c.name}</span>
-                {canManage(c.id) && (
-                  <button className="icon-btn tree-add" title="New department"
-                    onClick={() => setNewDeptCompany(c)}>＋</button>
-                )}
               </div>
 
               {!closedCompanies.has(c.id) && (c.boards || []).filter(b => !b.archived).map(b => (
@@ -108,6 +104,19 @@ export default function Sidebar() {
               <span className="nav-icon">＋</span>New company
             </button>
           )}
+        </div>
+
+        <div className="sidebar-bottom">
+          {['super_admin', 'admin', 'company_admin'].includes(user.role) && (
+            <button className={`nav-item ${route.page === 'admin' ? 'active' : ''}`}
+              onClick={() => navigate({ page: 'admin', tab: 'users' })}>
+              <span className="nav-icon">👥</span>Users
+            </button>
+          )}
+          <button className={`nav-item ${route.page === 'settings' ? 'active' : ''}`}
+            onClick={() => navigate({ page: 'settings' })}>
+            <span className="nav-icon">⚙️</span>Settings
+          </button>
         </div>
 
         {showNewCompany && (

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 export function useOutsideClose(onClose) {
   const ref = useRef(null)
@@ -20,6 +21,52 @@ export function Popover({ onClose, children, align = 'left', width }) {
       onClick={(e) => e.stopPropagation()}>
       {children}
     </div>
+  )
+}
+
+/** Popover rendered in a portal with fixed positioning — overlays everything,
+ * never clipped by scroll containers. Anchor via a ref on the trigger element. */
+export function OverlayPopover({ anchorRef, onClose, children, width = 230 }) {
+  const ref = useRef(null)
+  const [style, setStyle] = useState(null)
+
+  useEffect(() => {
+    const el = anchorRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    let left = r.left + r.width / 2 - width / 2
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
+    const spaceBelow = window.innerHeight - r.bottom
+    const st = { left, width, position: 'fixed', zIndex: 900 }
+    if (spaceBelow < 340 && r.top > 340) {
+      st.bottom = window.innerHeight - r.top + 4
+    } else {
+      st.top = r.bottom + 4
+    }
+    setStyle(st)
+  }, [])
+
+  useEffect(() => {
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)
+        && !(anchorRef.current && anchorRef.current.contains(e.target))) onClose()
+    }
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  if (!style) return null
+  return createPortal(
+    <div ref={ref} className="popover popover-overlay" style={style}
+      onClick={(e) => e.stopPropagation()}>
+      {children}
+    </div>,
+    document.body,
   )
 }
 

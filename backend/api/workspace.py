@@ -7,7 +7,7 @@ from .. import permissions as perm
 from ..auth import login_required
 from ..db import db
 from ..models import (AccessGrant, Board, BoardColumn, Company, Department,
-                      Item, NotificationRule, User)
+                      Item, NotificationRule, Role, User)
 from ..services import broadcast_board, log_activity
 
 bp = Blueprint('workspace', __name__, url_prefix='/api')
@@ -213,6 +213,8 @@ def _grant_company_id(scope_type, scope_id):
 
 
 def _describe_scope(g):
+    if g.scope_type == 'all':
+        return '🌐 All companies'
     if g.scope_type == 'company':
         c = db.session.get(Company, g.scope_id)
         return f'🏛 {c.name}' if c else '(deleted company)'
@@ -252,15 +254,19 @@ def create_grant(actor, user_id):
         return jsonify({'error': 'No permission to manage this user'}), 403
     data = request.json or {}
     scope_type = data.get('scope_type')
-    scope_id = data.get('scope_id')
-    if scope_type not in ('company', 'department', 'board', 'item') or not scope_id:
+    scope_id = data.get('scope_id') or 0
+    if scope_type == 'all':
+        if not perm.is_super(actor):
+            return jsonify({'error': 'Only super admins can grant access to all companies'}), 403
+        scope_id = 0
+    elif scope_type not in ('company', 'department', 'board', 'item') or not scope_id:
         return jsonify({'error': 'Invalid scope'}), 400
-    grant_company = _grant_company_id(scope_type, int(scope_id))
-    if grant_company is None and scope_type != 'company':
-        return jsonify({'error': 'Scope target not found'}), 404
-    if not perm.is_super(actor):
-        if grant_company != actor.company_id:
-            return jsonify({'error': 'You can only grant access within your own company'}), 403
+    else:
+        grant_company = _grant_company_id(scope_type, int(scope_id))
+        if grant_company is None and scope_type != 'company':
+            return jsonify({'error': 'Scope target not found'}), 404
+        if not perm.can_grant_in_company(actor, grant_company):
+            return jsonify({'error': 'You can only grant access within companies you manage'}), 403
     existing = AccessGrant.query.filter_by(
         user_id=target.id, scope_type=scope_type, scope_id=int(scope_id)).first()
     if existing:
@@ -280,6 +286,70 @@ def delete_grant(actor, grant_id):
     if not target or not perm.can_manage_user(actor, target):
         return jsonify({'error': 'No permission to manage this user'}), 403
     db.session.delete(g)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+# ---- Roles ----
+
+COMPANY_LEVELS = ('company_admin', 'member', 'viewer')
+STAFF_LEVELS = ('admin', 'member', 'viewer')
+
+
+@bp.get('/roles')
+@login_required
+def list_roles(user):
+    """Custom roles the actor may see/assign, plus the built-in levels."""
+    q = Role.query
+    if not perm.is_super(user):
+        if user.role == 'company_admin':
+            q = q.filter(Role.company_id == user.company_id)
+        elif user.role == 'admin':
+            managed = perm.managed_company_ids(user)
+            q = q.filter(Role.company_id.in_(managed) if managed else db.false())
+        else:
+            return jsonify({'roles': []})
+    return jsonify({'roles': [r.to_dict() for r in q.order_by(Role.name).all()]})
+
+
+@bp.post('/roles')
+@login_required
+def create_role(user):
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    level = data.get('level')
+    company_id = data.get('company_id') or None
+    if not name:
+        return jsonify({'error': 'Role name is required'}), 400
+    if company_id:
+        if not db.session.get(Company, company_id):
+            return jsonify({'error': 'Company not found'}), 404
+        if level not in COMPANY_LEVELS:
+            return jsonify({'error': f'Company role level must be one of {COMPANY_LEVELS}'}), 400
+        if not perm.can_manage_company(user, company_id):
+            return jsonify({'error': 'No permission to manage this company'}), 403
+    else:
+        if level not in STAFF_LEVELS:
+            return jsonify({'error': f'IT staff role level must be one of {STAFF_LEVELS}'}), 400
+        if not perm.is_super(user):
+            return jsonify({'error': 'Only super admins can define IT staff roles'}), 403
+    r = Role(name=name, level=level, company_id=company_id)
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({'role': r.to_dict()}), 201
+
+
+@bp.delete('/roles/<int:role_id>')
+@login_required
+def delete_role(user, role_id):
+    r = Role.query.get_or_404(role_id)
+    if r.company_id:
+        if not perm.can_manage_company(user, r.company_id):
+            return jsonify({'error': 'No permission'}), 403
+    elif not perm.is_super(user):
+        return jsonify({'error': 'Only super admins can delete IT staff roles'}), 403
+    User.query.filter_by(custom_role_id=r.id).update({'custom_role_id': None})
+    db.session.delete(r)
     db.session.commit()
     return jsonify({'ok': True})
 

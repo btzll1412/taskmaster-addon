@@ -4,11 +4,33 @@ from werkzeug.security import generate_password_hash
 from .. import permissions as perm
 from ..auth import login_required
 from ..db import db
-from ..models import Company, User
+from ..models import AccessGrant, Company, Role, User
 
 bp = Blueprint('users', __name__, url_prefix='/api/users')
 
-ROLES = ('super_admin', 'company_admin', 'member')
+COMPANY_LEVELS = ('company_admin', 'member', 'viewer')
+STAFF_LEVELS = ('super_admin', 'admin', 'member', 'viewer')
+
+
+def _resolve_role(actor, company_id, role, custom_role_id):
+    """Validate the requested role for the target's home (company vs IT staff).
+    Returns (role, custom_role_id) or an error string."""
+    if custom_role_id:
+        r = db.session.get(Role, custom_role_id)
+        if not r:
+            return 'Custom role not found'
+        if (r.company_id or None) != (company_id or None):
+            return 'That role belongs to a different company'
+        return (r.level, r.id)
+    if company_id:
+        if role not in COMPANY_LEVELS:
+            return 'Company users can be: company admin, member, or viewer'
+    else:
+        if role not in STAFF_LEVELS:
+            return 'IT staff can be: super admin, admin, member, or viewer'
+        if role in ('super_admin', 'admin') and not perm.is_super(actor):
+            return 'Only super admins can create admin-level staff'
+    return (role, None)
 
 
 @bp.get('')
@@ -16,10 +38,12 @@ ROLES = ('super_admin', 'company_admin', 'member')
 def list_users(user):
     users = perm.visible_users(user)
     companies = {c.id: c.name for c in Company.query.all()}
+    role_names = {r.id: r.name for r in Role.query.all()}
     out = []
     for u in users:
         d = u.to_dict(include_private=perm.can_manage_user(user, u))
         d['company_name'] = companies.get(u.company_id)
+        d['role_name'] = role_names.get(u.custom_role_id)
         out.append(d)
     return jsonify({'users': out})
 
@@ -27,7 +51,7 @@ def list_users(user):
 @bp.post('')
 @login_required
 def create_user(actor):
-    if actor.role not in ('super_admin', 'company_admin'):
+    if actor.role not in ('super_admin', 'admin', 'company_admin'):
         return jsonify({'error': 'No permission to create users'}), 403
     data = request.json or {}
     username = (data.get('username') or '').strip().lower()
@@ -39,16 +63,21 @@ def create_user(actor):
     if password and len(password) < 6:
         return jsonify({'error': 'Password must be at least 6 characters'}), 400
 
-    role = data.get('role') if data.get('role') in ROLES else 'member'
     company_id = data.get('company_id') or None
     if perm.is_super(actor):
         if company_id and not db.session.get(Company, company_id):
             return jsonify({'error': 'Company not found'}), 404
+    elif actor.role == 'admin':
+        if not company_id or company_id not in perm.managed_company_ids(actor):
+            return jsonify({'error': 'You can only create users in companies you manage'}), 403
     else:
-        # company admins create accounts only inside their own company
         company_id = actor.company_id
-        if role == 'super_admin':
-            role = 'member'
+
+    resolved = _resolve_role(actor, company_id,
+                             data.get('role') or 'member', data.get('custom_role_id'))
+    if isinstance(resolved, str):
+        return jsonify({'error': resolved}), 400
+    role, custom_role_id = resolved
 
     u = User(
         username=username,
@@ -56,10 +85,22 @@ def create_user(actor):
         email=(data.get('email') or '').strip() or None,
         color=data.get('color') or '#579bfc',
         role=role,
+        custom_role_id=custom_role_id,
         company_id=company_id,
         password_hash=generate_password_hash(password) if password else None,
     )
     db.session.add(u)
+    db.session.flush()
+
+    # IT staff site access: all companies or a specific list
+    if not company_id and role != 'super_admin':
+        if data.get('all_companies') and perm.is_super(actor):
+            db.session.add(AccessGrant(user_id=u.id, scope_type='all', scope_id=0,
+                                       granted_by=actor.id))
+        for cid in (data.get('company_ids') or []):
+            if db.session.get(Company, cid) and perm.can_grant_in_company(actor, cid):
+                db.session.add(AccessGrant(user_id=u.id, scope_type='company',
+                                           scope_id=int(cid), granted_by=actor.id))
     db.session.commit()
     return jsonify({'user': u.to_dict(include_private=True)}), 201
 
@@ -82,12 +123,14 @@ def update_user(actor, user_id):
         if cid and not db.session.get(Company, cid):
             return jsonify({'error': 'Company not found'}), 404
         u.company_id = cid
-    if 'role' in data and data['role'] in ROLES:
-        if u.id == actor.id and data['role'] != actor.role:
+    if 'role' in data or 'custom_role_id' in data:
+        if u.id == actor.id:
             return jsonify({'error': 'You cannot change your own role'}), 400
-        if data['role'] == 'super_admin' and not perm.is_super(actor):
-            return jsonify({'error': 'Only super admins can promote to super admin'}), 403
-        u.role = data['role']
+        resolved = _resolve_role(actor, u.company_id,
+                                 data.get('role') or u.role, data.get('custom_role_id'))
+        if isinstance(resolved, str):
+            return jsonify({'error': resolved}), 400
+        u.role, u.custom_role_id = resolved
     if 'is_active' in data:
         if u.id == actor.id and not data['is_active']:
             return jsonify({'error': 'You cannot deactivate yourself'}), 400

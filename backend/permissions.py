@@ -16,8 +16,27 @@ def is_super(user):
     return user.role == 'super_admin'
 
 
+def can_write(user):
+    """Viewers are read-only everywhere."""
+    return user.role != 'viewer'
+
+
 def user_grants(user):
     return AccessGrant.query.filter_by(user_id=user.id).all()
+
+
+def has_all_access(user):
+    """IT staff granted every company ('all sites')."""
+    return any(g.scope_type == 'all' for g in user_grants(user))
+
+
+def managed_company_ids(user):
+    """Companies an IT-staff admin manages (via 'all' or company grants)."""
+    if user.role != 'admin':
+        return set()
+    if has_all_access(user):
+        return {c.id for c in Company.query.all()}
+    return {g.scope_id for g in user_grants(user) if g.scope_type == 'company'}
 
 
 def board_company_id(board):
@@ -30,6 +49,8 @@ def board_company_id(board):
 def _granted_board_ids(user):
     """Board ids covered by full-board-or-wider grants."""
     grants = user_grants(user)
+    if any(g.scope_type == 'all' for g in grants):
+        return {b.id for b in Board.query.all()}
     company_ids = {g.scope_id for g in grants if g.scope_type == 'company'}
     dept_ids = {g.scope_id for g in grants if g.scope_type == 'department'}
     board_ids = {g.scope_id for g in grants if g.scope_type == 'board'}
@@ -122,11 +143,13 @@ def can_view_item(user, item):
 
 
 def can_edit_board(user, board):
-    return board_access(user, board) == 'full'
+    return can_write(user) and board_access(user, board) == 'full'
 
 
 def can_manage_company(user, company_id):
     if is_super(user):
+        return True
+    if user.role == 'admin' and company_id in managed_company_ids(user):
         return True
     return user.role == 'company_admin' and user.company_id == company_id
 
@@ -134,14 +157,18 @@ def can_manage_company(user, company_id):
 def can_manage_user(actor, target):
     if is_super(actor):
         return True
-    return (actor.role == 'company_admin' and target.company_id == actor.company_id
-            and target.role != 'super_admin')
+    if target.role in ('super_admin', 'admin'):
+        return False
+    if actor.role == 'admin':
+        return target.company_id in managed_company_ids(actor)
+    return actor.role == 'company_admin' and target.company_id == actor.company_id
 
 
 def accessible_companies(user):
-    if is_super(user):
+    if is_super(user) or has_all_access(user):
         return Company.query.order_by(Company.position, Company.id).all()
     company_ids = set()
+    company_ids |= managed_company_ids(user)
     if user.company_id and user.role == 'company_admin':
         company_ids.add(user.company_id)
     for g in user_grants(user):
@@ -202,9 +229,24 @@ def _filter_boards(user, boards):
 
 def visible_users(user):
     """Who a user may see in people pickers etc. Same company + IT staff;
-    supers see everyone."""
-    if is_super(user):
+    supers (and all-access staff) see everyone."""
+    if is_super(user) or has_all_access(user):
         return User.query.order_by(User.display_name).all()
+    if user.role == 'admin':
+        managed = managed_company_ids(user)
+        q = User.query.filter(
+            db.or_(User.company_id.in_(managed) if managed else db.false(),
+                   User.company_id.is_(None)))
+        return q.order_by(User.display_name).all()
     q = User.query.filter(
         db.or_(User.company_id == user.company_id, User.company_id.is_(None)))
     return q.order_by(User.display_name).all()
+
+
+def can_grant_in_company(actor, company_id):
+    """May the actor create/remove grants scoped to this company?"""
+    if is_super(actor):
+        return True
+    if actor.role == 'admin':
+        return company_id in managed_company_ids(actor)
+    return actor.role == 'company_admin' and actor.company_id == company_id
