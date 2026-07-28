@@ -89,21 +89,35 @@ def values_for_items(item_ids):
     return out
 
 
-def serialize_board_full(board):
+def serialize_board_full(board, visible_ids=None, access='full'):
+    """Full board payload. visible_ids=None means every item; a set filters
+    the payload down to the items a partially-granted user may see."""
     groups = (BoardGroup.query.filter_by(board_id=board.id)
               .order_by(BoardGroup.position).all())
     columns = (BoardColumn.query.filter_by(board_id=board.id)
                .order_by(BoardColumn.position).all())
     items = (Item.query.filter_by(board_id=board.id)
              .order_by(Item.position).all())
+    if visible_ids is not None:
+        items = [i for i in items if i.id in visible_ids]
     ids = [i.id for i in items]
     values = values_for_items(ids)
     counts = item_counts(ids)
+    subitem_counts = {}
+    for i in items:
+        if i.parent_id:
+            subitem_counts[i.parent_id] = subitem_counts.get(i.parent_id, 0) + 1
+    out_items = []
+    for i in items:
+        d = i.to_dict(values=values.get(i.id, {}), counts=counts.get(i.id))
+        d['subitems_count'] = subitem_counts.get(i.id, 0)
+        out_items.append(d)
     return {
         'board': board.to_dict(),
         'groups': [g.to_dict() for g in groups],
         'columns': [c.to_dict() for c in columns],
-        'items': [i.to_dict(values=values.get(i.id, {}), counts=counts.get(i.id)) for i in items],
+        'items': out_items,
+        'access': access,
     }
 
 

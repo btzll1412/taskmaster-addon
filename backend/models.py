@@ -16,7 +16,10 @@ class User(db.Model):
     display_name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(200))
     color = db.Column(db.String(7), default='#579bfc')
-    role = db.Column(db.String(20), default='member')  # admin | member
+    # super_admin: sees everything | company_admin: full access to own company
+    # member: explicit grants only (plus items they are assigned to)
+    role = db.Column(db.String(20), default='member')
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'))
     auth_source = db.Column(db.String(20), default='local')  # local (ldap planned)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=utcnow)
@@ -28,6 +31,7 @@ class User(db.Model):
             'display_name': self.display_name,
             'color': self.color,
             'role': self.role,
+            'company_id': self.company_id,
             'is_active': self.is_active,
             'has_password': bool(self.password_hash),
             'initials': ''.join(w[0] for w in self.display_name.split()[:2]).upper() or '?',
@@ -45,6 +49,7 @@ class Board(db.Model):
     icon = db.Column(db.String(16), default='📋')
     color = db.Column(db.String(7), default='#579bfc')
     position = db.Column(db.Float, default=0)
+    department_id = db.Column(db.Integer, db.ForeignKey('departments.id'))
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     archived = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=utcnow)
@@ -58,6 +63,7 @@ class Board(db.Model):
             'icon': self.icon or '📋',
             'color': self.color,
             'position': self.position,
+            'department_id': self.department_id,
             'owner_id': self.owner_id,
             'archived': self.archived,
             'created_at': iso(self.created_at),
@@ -119,6 +125,7 @@ class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     board_id = db.Column(db.Integer, db.ForeignKey('boards.id', ondelete='CASCADE'), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey('board_groups.id', ondelete='CASCADE'), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('items.id', ondelete='CASCADE'))
     name = db.Column(db.String(500), nullable=False)
     position = db.Column(db.Float, default=0)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -135,6 +142,7 @@ class Item(db.Model):
             'id': self.id,
             'board_id': self.board_id,
             'group_id': self.group_id,
+            'parent_id': self.parent_id,
             'name': self.name,
             'position': self.position,
             'created_by': self.created_by,
@@ -272,6 +280,97 @@ class Notification(db.Model):
             'message': self.message,
             'read': self.read,
             'created_at': iso(self.created_at),
+        }
+
+
+class Company(db.Model):
+    __tablename__ = 'companies'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    color = db.Column(db.String(7), default='#0073ea')
+    position = db.Column(db.Float, default=0)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'color': self.color,
+            'position': self.position,
+        }
+
+
+class Department(db.Model):
+    __tablename__ = 'departments'
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='CASCADE'), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    icon = db.Column(db.String(16), default='🏢')
+    position = db.Column(db.Float, default=0)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'company_id': self.company_id,
+            'name': self.name,
+            'icon': self.icon or '🏢',
+            'position': self.position,
+        }
+
+
+class AccessGrant(db.Model):
+    """Explicit access for a user: an entire company, a department, a board, or a single item."""
+    __tablename__ = 'access_grants'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    scope_type = db.Column(db.String(20), nullable=False)  # company | department | board | item
+    scope_id = db.Column(db.Integer, nullable=False)
+    granted_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'scope_type', 'scope_id', name='uq_grant'),
+        db.Index('idx_grants_user', 'user_id'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'scope_type': self.scope_type,
+            'scope_id': self.scope_id,
+            'granted_by': self.granted_by,
+            'created_at': iso(self.created_at),
+        }
+
+
+class NotificationRule(db.Model):
+    """Per-board rule: when <column> changes to <label>, notify <users>."""
+    __tablename__ = 'notification_rules'
+    id = db.Column(db.Integer, primary_key=True)
+    board_id = db.Column(db.Integer, db.ForeignKey('boards.id', ondelete='CASCADE'), nullable=False)
+    column_id = db.Column(db.Integer, db.ForeignKey('board_columns.id', ondelete='CASCADE'), nullable=False)
+    label_id = db.Column(db.String(40))  # null = any status change on this column
+    user_ids = db.Column(db.Text, default='[]')
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    __table_args__ = (db.Index('idx_rules_board', 'board_id'),)
+
+    def user_id_list(self):
+        try:
+            return json.loads(self.user_ids or '[]')
+        except ValueError:
+            return []
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'board_id': self.board_id,
+            'column_id': self.column_id,
+            'label_id': self.label_id,
+            'user_ids': self.user_id_list(),
+            'created_by': self.created_by,
         }
 
 
