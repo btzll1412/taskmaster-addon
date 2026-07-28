@@ -33,6 +33,12 @@ def ensure_schema():
         _ensure_column('boards', 'department_id', 'department_id INTEGER')
     if 'items' in tables:
         _ensure_column('items', 'parent_id', 'parent_id INTEGER')
+    if 'boards' in tables:
+        _ensure_column('boards', 'company_id', 'company_id INTEGER')
+    if 'companies' in tables:
+        for col in ('address TEXT', 'phone VARCHAR(60)', 'phone2 VARCHAR(60)',
+                    'email VARCHAR(200)', 'contact_name VARCHAR(200)', 'notes TEXT'):
+            _ensure_column('companies', col.split()[0], col)
 
 
 def migrate_v4_data():
@@ -44,8 +50,10 @@ def migrate_v4_data():
         db.session.commit()
         print(f'TaskMaster: upgraded {len(upgraded)} admin(s) to super_admin')
 
-    # Boards created before companies existed get a default home
-    orphans = Board.query.filter(Board.department_id.is_(None)).all()
+    # Boards created before companies existed get a default home.
+    # Boards with company_id set are intentionally direct-under-company — leave them.
+    orphans = Board.query.filter(Board.department_id.is_(None),
+                                 Board.company_id.is_(None)).all()
     if orphans:
         company = Company.query.order_by(Company.id).first()
         if company is None:

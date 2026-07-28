@@ -50,6 +50,7 @@ class Board(db.Model):
     color = db.Column(db.String(7), default='#579bfc')
     position = db.Column(db.Float, default=0)
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id'))
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'))  # direct-under-company boards
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     archived = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=utcnow)
@@ -64,6 +65,7 @@ class Board(db.Model):
             'color': self.color,
             'position': self.position,
             'department_id': self.department_id,
+            'company_id': self.company_id,
             'owner_id': self.owner_id,
             'archived': self.archived,
             'created_at': iso(self.created_at),
@@ -289,6 +291,12 @@ class Company(db.Model):
     name = db.Column(db.String(200), nullable=False)
     color = db.Column(db.String(7), default='#0073ea')
     position = db.Column(db.Float, default=0)
+    address = db.Column(db.Text)
+    phone = db.Column(db.String(60))
+    phone2 = db.Column(db.String(60))
+    email = db.Column(db.String(200))
+    contact_name = db.Column(db.String(200))
+    notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utcnow)
 
     def to_dict(self):
@@ -297,6 +305,12 @@ class Company(db.Model):
             'name': self.name,
             'color': self.color,
             'position': self.position,
+            'address': self.address or '',
+            'phone': self.phone or '',
+            'phone2': self.phone2 or '',
+            'email': self.email or '',
+            'contact_name': self.contact_name or '',
+            'notes': self.notes or '',
         }
 
 

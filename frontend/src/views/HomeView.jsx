@@ -16,9 +16,9 @@ export default function HomeView() {
 
   const cards = ov ? [
     ...(isSuper ? [{ icon: '🏛️', label: 'Companies', value: ov.companies, go: () => navigate({ page: 'admin', tab: 'companies' }) }] : []),
-    { icon: '🏢', label: 'Departments', value: ov.departments },
-    { icon: '📋', label: 'Jobs', value: ov.jobs },
-    { icon: '🧩', label: 'Tasks', value: ov.tasks },
+    { icon: '🏢', label: 'Departments', value: ov.departments, go: () => navigate({ page: 'departments' }) },
+    { icon: '📋', label: 'Jobs', value: ov.jobs, go: () => navigate({ page: 'jobs' }) },
+    { icon: '🧩', label: 'Tasks', value: ov.tasks, go: () => navigate({ page: 'tasks' }) },
     { icon: '👥', label: 'Users', value: ov.users, go: isAdmin ? () => navigate({ page: 'admin', tab: 'users' }) : null },
   ] : []
 

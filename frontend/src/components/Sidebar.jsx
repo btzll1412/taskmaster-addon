@@ -57,13 +57,20 @@ export default function Sidebar() {
                   {closedCompanies.has(c.id) ? '▸' : '▾'}
                 </button>
                 <span className="tree-label company-label" title={c.name}
-                  onClick={() => toggleCompany(c.id)}>🏛️ {c.name}</span>
+                  onClick={() => navigate({ page: 'company', companyId: c.id })}>🏛️ {c.name}</span>
                 {canManage(c.id) && (
                   <button className="icon-btn tree-add" title="New department"
                     onClick={() => setNewDeptCompany(c)}>＋</button>
                 )}
               </div>
 
+              {!closedCompanies.has(c.id) && (c.boards || []).filter(b => !b.archived).map(b => (
+                <div key={'b' + b.id} className="tree-dept">
+                  <BoardNode board={b}
+                    active={route.page === 'board' && route.boardId === b.id}
+                    onOpen={() => openBoard(b.id)} showToast={showToast} />
+                </div>
+              ))}
               {!closedCompanies.has(c.id) && c.departments.map(d => (
                 <div key={d.id} className="tree-dept">
                   <div className="tree-row tree-dept-row">
@@ -71,7 +78,7 @@ export default function Sidebar() {
                       {closedDepts.has(d.id) ? '▸' : '▾'}
                     </button>
                     <span className="tree-label" title={d.name}
-                      onClick={() => toggleDept(d.id)}>{d.icon} {d.name}</span>
+                      onClick={() => navigate({ page: 'department', deptId: d.id })}>{d.icon} {d.name}</span>
                     <button className="icon-btn tree-add" title="New board"
                       onClick={() => setNewBoardDept(d)}>＋</button>
                   </div>

@@ -103,6 +103,76 @@ def search(user):
     return jsonify({'items': out, 'boards': [b.to_dict() for b in boards]})
 
 
+@bp.get('/overview-items')
+@login_required
+def overview_items(user):
+    """All accessible jobs (kind=jobs) or sub-tasks (kind=tasks) across boards,
+    with enough context to render a directory list."""
+    kind = request.args.get('kind', 'jobs')
+    boards = {}
+    for b in Board.query.filter_by(archived=False).all():
+        access = perm.board_access(user, b)
+        if access:
+            boards[b.id] = (b, access)
+    if not boards:
+        return jsonify({'items': []})
+
+    q = Item.query.filter(Item.board_id.in_(list(boards)))
+    q = q.filter(Item.parent_id.is_(None)) if kind == 'jobs' else q.filter(Item.parent_id.isnot(None))
+    items = q.order_by(Item.updated_at.desc()).all()
+
+    # filter partial boards down to visible items
+    visible_cache = {}
+    out_items = []
+    for i in items:
+        b, access = boards[i.board_id]
+        if access == 'partial':
+            if i.board_id not in visible_cache:
+                visible_cache[i.board_id] = perm.visible_item_ids(user, b)
+            if i.id not in visible_cache[i.board_id]:
+                continue
+        out_items.append(i)
+
+    # context: company names, status label per item, parent names
+    from ..models import Company as _Company, Department as _Department
+    company_names = {c.id: c.name for c in _Company.query.all()}
+    board_company = {bid: perm.board_company_id(b) for bid, (b, _a) in boards.items()}
+    status_cols = {}
+    for bid, (b, _a) in boards.items():
+        col = (BoardColumn.query.filter_by(board_id=bid, type='status')
+               .order_by(BoardColumn.position).first())
+        if col:
+            status_cols[bid] = (col.id, {l['id']: l for l in col.settings_dict().get('labels', [])})
+    ids = [i.id for i in out_items]
+    status_values = {}
+    if ids:
+        col_ids = [c[0] for c in status_cols.values()]
+        for v in ItemValue.query.filter(ItemValue.item_id.in_(ids),
+                                        ItemValue.column_id.in_(col_ids)).all():
+            status_values[v.item_id] = v.value_dict().get('id')
+    parent_names = {}
+    parent_ids = {i.parent_id for i in out_items if i.parent_id}
+    if parent_ids:
+        parent_names = {p.id: p.name for p in Item.query.filter(Item.id.in_(parent_ids)).all()}
+
+    result = []
+    for i in out_items:
+        b, _access = boards[i.board_id]
+        label = None
+        if i.board_id in status_cols:
+            _cid, labels = status_cols[i.board_id]
+            label = labels.get(status_values.get(i.id))
+        result.append({
+            'id': i.id, 'name': i.name, 'board_id': i.board_id,
+            'board_name': b.name, 'board_icon': b.icon,
+            'company_name': company_names.get(board_company.get(i.board_id), ''),
+            'status': {'label': label['label'], 'color': label['color']} if label else None,
+            'parent_name': parent_names.get(i.parent_id),
+            'updated_at': i.updated_at.isoformat() + 'Z' if i.updated_at else None,
+        })
+    return jsonify({'items': result})
+
+
 @bp.get('/stats')
 @login_required
 def stats(user):

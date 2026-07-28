@@ -21,10 +21,10 @@ def user_grants(user):
 
 
 def board_company_id(board):
-    if not board.department_id:
-        return None
-    dept = db.session.get(Department, board.department_id)
-    return dept.company_id if dept else None
+    if board.department_id:
+        dept = db.session.get(Department, board.department_id)
+        return dept.company_id if dept else board.company_id
+    return board.company_id
 
 
 def _granted_board_ids(user):
@@ -41,6 +41,9 @@ def _granted_board_ids(user):
     if dept_ids:
         board_ids |= {b.id for b in Board.query.filter(
             Board.department_id.in_(dept_ids)).all()}
+    if company_ids:
+        board_ids |= {b.id for b in Board.query.filter(
+            Board.company_id.in_(company_ids)).all()}
     return board_ids
 
 
@@ -176,6 +179,17 @@ def accessible_companies(user):
 def accessible_boards_in(user, department):
     boards = (Board.query.filter_by(department_id=department.id)
               .order_by(Board.position, Board.id).all())
+    return _filter_boards(user, boards)
+
+
+def accessible_direct_boards(user, company):
+    """Boards attached straight to a company (no department)."""
+    boards = (Board.query.filter_by(company_id=company.id, department_id=None)
+              .order_by(Board.position, Board.id).all())
+    return _filter_boards(user, boards)
+
+
+def _filter_boards(user, boards):
     if is_super(user):
         return [(b, 'full') for b in boards]
     out = []

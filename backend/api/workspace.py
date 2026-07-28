@@ -23,6 +23,7 @@ def workspace(user):
                        .filter(Item.parent_id.is_(None)).group_by(Item.board_id).all())
     out = []
     for c in companies:
+        direct = perm.accessible_direct_boards(user, c)
         depts = (Department.query.filter_by(company_id=c.id)
                  .order_by(Department.position, Department.id).all())
         dept_list = []
@@ -36,7 +37,13 @@ def workspace(user):
                             'items_count': item_counts.get(b.id, 0)}
                            for b, access in boards],
             })
-        out.append({**c.to_dict(), 'departments': dept_list})
+        out.append({
+            **c.to_dict(),
+            'boards': [{**b.to_dict(), 'access': access,
+                        'items_count': item_counts.get(b.id, 0)}
+                       for b, access in direct],
+            'departments': dept_list,
+        })
     return jsonify({
         'companies': out,
         'can_create_companies': perm.is_super(user),
@@ -61,19 +68,63 @@ def create_company(user):
     return jsonify({'company': c.to_dict()}), 201
 
 
+@bp.get('/companies/<int:company_id>')
+@login_required
+def get_company(user, company_id):
+    c = Company.query.get_or_404(company_id)
+    accessible = {ac.id for ac in perm.accessible_companies(user)}
+    if c.id not in accessible:
+        return jsonify({'error': 'You do not have access to this company'}), 403
+    direct = perm.accessible_direct_boards(user, c)
+    depts = (Department.query.filter_by(company_id=c.id)
+             .order_by(Department.position, Department.id).all())
+    dept_list = []
+    for d in depts:
+        boards = perm.accessible_boards_in(user, d)
+        if not boards and not perm.can_manage_company(user, c.id) and not perm.is_super(user):
+            continue
+        dept_list.append({**d.to_dict(),
+                          'boards': [{**b.to_dict(), 'access': a} for b, a in boards]})
+    return jsonify({
+        'company': c.to_dict(),
+        'boards': [{**b.to_dict(), 'access': a} for b, a in direct],
+        'departments': dept_list,
+        'can_manage': perm.can_manage_company(user, c.id),
+    })
+
+
 @bp.put('/companies/<int:company_id>')
 @login_required
 def update_company(user, company_id):
-    if not perm.is_super(user):
-        return jsonify({'error': 'Only super admins can edit companies'}), 403
     c = Company.query.get_or_404(company_id)
+    # company admins may edit their own company's details; only supers rename others
+    if not perm.can_manage_company(user, c.id):
+        return jsonify({'error': 'No permission to edit this company'}), 403
     data = request.json or {}
     if data.get('name', '').strip():
         c.name = data['name'].strip()
-    if 'color' in data:
-        c.color = data['color']
+    for field in ('color', 'address', 'phone', 'phone2', 'email', 'contact_name', 'notes'):
+        if field in data:
+            setattr(c, field, (data[field] or '').strip() or None)
     db.session.commit()
     return jsonify({'company': c.to_dict()})
+
+
+@bp.get('/departments/<int:dept_id>')
+@login_required
+def get_department(user, dept_id):
+    d = Department.query.get_or_404(dept_id)
+    c = db.session.get(Company, d.company_id)
+    accessible = {ac.id for ac in perm.accessible_companies(user)}
+    if not c or c.id not in accessible:
+        return jsonify({'error': 'You do not have access to this department'}), 403
+    boards = perm.accessible_boards_in(user, d)
+    return jsonify({
+        'department': d.to_dict(),
+        'company': c.to_dict(),
+        'boards': [{**b.to_dict(), 'access': a} for b, a in boards],
+        'can_manage': perm.can_manage_company(user, c.id),
+    })
 
 
 @bp.delete('/companies/<int:company_id>')
@@ -84,6 +135,8 @@ def delete_company(user, company_id):
     c = Company.query.get_or_404(company_id)
     if Department.query.filter_by(company_id=c.id).count():
         return jsonify({'error': 'Delete or move its departments first'}), 400
+    if Board.query.filter_by(company_id=c.id).count():
+        return jsonify({'error': 'Delete its boards first'}), 400
     db.session.delete(c)
     db.session.commit()
     return jsonify({'ok': True})
