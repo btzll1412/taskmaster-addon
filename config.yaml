@@ -1,5 +1,5 @@
 name: TaskMaster - Team Work Management
-version: "3.0.0"
+version: "2.0.0"
 slug: taskmaster
 description: Self-hosted monday.com-style work management - boards, custom columns, kanban, real-time collaboration, user accounts, and Home Assistant automation integration
 url: https://github.com/btzll1412/taskmaster-addon
