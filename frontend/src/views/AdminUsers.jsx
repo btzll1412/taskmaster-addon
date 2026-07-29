@@ -319,6 +319,7 @@ function GrantsModal({ target, onClose, showToast }) {
   const [companyId, setCompanyId] = useState('')
   const [deptId, setDeptId] = useState('')
   const [boardId, setBoardId] = useState('')
+  const [editing, setEditing] = useState(null) // grant being edited, or null
 
   async function load() {
     try { setGrants((await api.get(`/api/users/${target.id}/grants`)).grants) }
@@ -331,21 +332,66 @@ function GrantsModal({ target, onClose, showToast }) {
   const dept = departments.find(d => d.id === Number(deptId))
   const boards = deptId === 'direct' ? (company?.boards || []) : (dept?.boards || [])
 
-  async function addGrant() {
+  function clearForm() {
+    setCompanyId(''); setDeptId(''); setBoardId(''); setEditing(null)
+  }
+
+  /** Locate a grant's scope inside the workspace tree to prefill the pickers. */
+  function startEdit(g) {
+    setEditing(g)
+    if (g.scope_type === 'company') {
+      setScopeType('company'); setCompanyId(String(g.scope_id)); setDeptId(''); setBoardId('')
+      return
+    }
+    if (g.scope_type === 'department') {
+      for (const c of workspace.companies) {
+        if (c.departments.some(d => d.id === g.scope_id)) {
+          setScopeType('department'); setCompanyId(String(c.id)); setDeptId(String(g.scope_id)); setBoardId('')
+          return
+        }
+      }
+    }
+    if (g.scope_type === 'board') {
+      for (const c of workspace.companies) {
+        if ((c.boards || []).some(b => b.id === g.scope_id)) {
+          setScopeType('board'); setCompanyId(String(c.id)); setDeptId('direct'); setBoardId(String(g.scope_id))
+          return
+        }
+        for (const d of c.departments) {
+          if (d.boards.some(b => b.id === g.scope_id)) {
+            setScopeType('board'); setCompanyId(String(c.id)); setDeptId(String(d.id)); setBoardId(String(g.scope_id))
+            return
+          }
+        }
+      }
+    }
+    showToast('That access target no longer exists — remove the rule instead')
+    setEditing(null)
+  }
+
+  async function saveGrant() {
     let scope_id = null
     if (scopeType === 'company') scope_id = Number(companyId)
     if (scopeType === 'department') scope_id = Number(deptId)
     if (scopeType === 'board') scope_id = Number(boardId)
     if (!scope_id) { showToast('Pick what to grant access to'); return }
     try {
-      await api.post(`/api/users/${target.id}/grants`, { scope_type: scopeType, scope_id })
+      if (editing) {
+        await api.put(`/api/grants/${editing.id}`, { scope_type: scopeType, scope_id })
+      } else {
+        await api.post(`/api/users/${target.id}/grants`, { scope_type: scopeType, scope_id })
+      }
+      clearForm()
       await load()
     } catch (e) { showToast(e.message) }
   }
 
   async function removeGrant(g) {
-    try { await api.del(`/api/grants/${g.id}`); await load() }
-    catch (e) { showToast(e.message) }
+    try {
+      await api.del(`/api/grants/${g.id}`)
+      if (editing?.id === g.id) clearForm()
+      await load()
+    } catch (e) { showToast(e.message) }
   }
 
   return (
@@ -361,15 +407,19 @@ function GrantsModal({ target, onClose, showToast }) {
           {grants === null && <div className="muted">Loading…</div>}
           {grants?.length === 0 && <div className="muted">No access granted yet.</div>}
           {grants?.map(g => (
-            <div key={g.id} className="grant-row">
+            <div key={g.id} className={`grant-row ${editing?.id === g.id ? 'grant-editing' : ''}`}>
               <span className="grant-label">{g.label}</span>
               <span className="grant-type">{g.scope_type}</span>
+              {['company', 'department', 'board'].includes(g.scope_type) && (
+                <button className="btn btn-small" title="Change this access rule"
+                  onClick={() => startEdit(g)}>✏️ Edit</button>
+              )}
               <button className="icon-btn" title="Remove access" onClick={() => removeGrant(g)}>✕</button>
             </div>
           ))}
         </div>
 
-        <h4>Grant new access</h4>
+        <h4>{editing ? `✏️ Editing rule: ${editing.label}` : 'Grant new access'}</h4>
         <div className="grant-form">
           <select value={scopeType} onChange={e => setScopeType(e.target.value)}>
             <option value="company">Entire company</option>
@@ -393,7 +443,12 @@ function GrantsModal({ target, onClose, showToast }) {
               {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           )}
-          <button className="btn btn-primary btn-small" onClick={addGrant}>Grant</button>
+          <button className="btn btn-primary btn-small" onClick={saveGrant}>
+            {editing ? 'Save changes' : 'Grant'}
+          </button>
+          {editing && (
+            <button className="btn btn-small" onClick={clearForm}>Cancel</button>
+          )}
         </div>
         <p className="muted grant-hint">💡 To share a <strong>single job</strong>, open that job on its board and use “Share access”.</p>
       </div>
