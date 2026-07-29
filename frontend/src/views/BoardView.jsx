@@ -13,6 +13,7 @@ export default function BoardView() {
   const [view, setView] = useState(() => localStorage.getItem(`tm-view-${boardId}`) || 'table')
   const [search, setSearch] = useState('')
   const [personFilter, setPersonFilter] = useState(null)
+  const [statusFilter, setStatusFilter] = useState(() => new Set())
   const [menu, setMenu] = useState(false)
   const [renaming, setRenaming] = useState(false)
 
@@ -24,19 +25,28 @@ export default function BoardView() {
   const dept = ready ? boardData.department : null
   const company = dept ? workspace.companies.find(c => c.id === dept.company_id) : null
 
+  const statusCol = columns.find(c => c.type === 'status')
+  const statusLabels = statusCol?.settings?.labels || []
+  const { user } = useStore()
+
   const filtered = useMemo(() => {
     const peopleColIds = columns.filter(c => c.type === 'people').map(c => String(c.id))
-    let out = items
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      out = out.filter(i => i.name.toLowerCase().includes(q))
+    const doneIds = new Set(statusLabels.filter(l => l.label.toLowerCase() === 'done').map(l => l.id))
+    const keep = (i) => {
+      if (search.trim() && !i.name.toLowerCase().includes(search.trim().toLowerCase())) return false
+      if (personFilter && !peopleColIds.some(cid =>
+        (i.values[cid]?.user_ids || []).includes(personFilter))) return false
+      if (statusCol) {
+        const sid = i.values[String(statusCol.id)]?.id ?? null
+        if (statusFilter.size > 0 && !statusFilter.has(sid ?? '__none__')) return false
+        if (user.hide_done && statusFilter.size === 0 && sid && doneIds.has(sid)) return false
+      }
+      return true
     }
-    if (personFilter) {
-      out = out.filter(i => peopleColIds.some(cid =>
-        (i.values[cid]?.user_ids || []).includes(personFilter)))
-    }
-    return out
-  }, [items, search, personFilter, columns])
+    // filters apply to jobs; their sub-tasks follow the parent
+    const keptTops = new Set(items.filter(i => !i.parent_id && keep(i)).map(i => i.id))
+    return items.filter(i => i.parent_id ? keptTops.has(i.parent_id) : keptTops.has(i.id))
+  }, [items, search, personFilter, statusFilter, columns, user.hide_done])
 
   if (!ready) {
     return <div className="board-loading"><Spinner /></div>
@@ -131,11 +141,39 @@ export default function BoardView() {
               </button>
             ))}
           </div>
-          {(search || personFilter) && (
-            <button className="link-btn" onClick={() => { setSearch(''); setPersonFilter(null) }}>Clear filters</button>
+          {(search || personFilter || statusFilter.size > 0) && (
+            <button className="link-btn" onClick={() => { setSearch(''); setPersonFilter(null); setStatusFilter(new Set()) }}>Clear filters</button>
           )}
           <span className="toolbar-count muted">{filtered.length} / {items.length} items</span>
         </div>
+
+        {statusLabels.length > 0 && (
+          <div className="status-filter-bar">
+            <span className="muted status-filter-label">Status:</span>
+            {statusLabels.map(l => (
+              <button key={l.id}
+                className={`status-filter-chip ${statusFilter.has(l.id) ? 'active' : ''}`}
+                style={{ '--chip-color': l.color }}
+                onClick={() => {
+                  const next = new Set(statusFilter)
+                  next.has(l.id) ? next.delete(l.id) : next.add(l.id)
+                  setStatusFilter(next)
+                }}>
+                {l.label}
+              </button>
+            ))}
+            <button
+              className={`status-filter-chip ${statusFilter.has('__none__') ? 'active' : ''}`}
+              style={{ '--chip-color': '#c4c4c4' }}
+              onClick={() => {
+                const next = new Set(statusFilter)
+                next.has('__none__') ? next.delete('__none__') : next.add('__none__')
+                setStatusFilter(next)
+              }}>
+              No status
+            </button>
+          </div>
+        )}
       </div>
 
       {view === 'table'

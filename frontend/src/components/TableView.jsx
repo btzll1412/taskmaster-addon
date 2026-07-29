@@ -179,10 +179,10 @@ function ItemRow({ item, columns, users, groups, canEdit, act, setValue,
               {isExpanded ? '▾' : subCount > 0 ? `▸${subCount}` : '▸'}
             </button>
           )}
-          <ItemName item={item} act={act} />
-          <button className="open-btn" onClick={() => openItem(item.id)}>
-            Open {item.updates_count > 0 && <span className="bubble">💬 {item.updates_count}</span>}
-          </button>
+          <span className="item-name" title="Open" onClick={() => openItem(item.id)}>
+            {item.name}
+            {item.updates_count > 0 && <span className="bubble"> 💬 {item.updates_count}</span>}
+          </span>
           <ItemMenu item={item} groups={groups} act={act} canEdit={canEdit} isSub={isSub} />
         </div>
       </td>
@@ -212,18 +212,6 @@ function AddSubItem({ board, parent, act }) {
         onChange={e => setName(e.target.value)} />
     </form>
   )
-}
-
-function ItemName({ item, act }) {
-  const [editing, setEditing] = useState(false)
-  if (editing) {
-    return (
-      <input className="cell-input item-name-input" autoFocus defaultValue={item.name}
-        onBlur={e => { setEditing(false); const v = e.target.value.trim(); if (v && v !== item.name) act(api.put(`/api/items/${item.id}`, { name: v })) }}
-        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(false) }} />
-    )
-  }
-  return <span className="item-name" onClick={() => setEditing(true)} title="Click to rename">{item.name}</span>
 }
 
 function ItemMenu({ item, groups, act, canEdit, isSub }) {
