@@ -287,6 +287,43 @@ def create_grant(actor, user_id):
     return jsonify({'grant': {**g.to_dict(), 'label': _describe_scope(g)}}), 201
 
 
+@bp.put('/grants/<int:grant_id>')
+@login_required
+def update_grant(actor, grant_id):
+    """Change an existing access rule in place (e.g. widen board -> department)."""
+    g = AccessGrant.query.get_or_404(grant_id)
+    target = db.session.get(User, g.user_id)
+    if not target or not perm.can_manage_user(actor, target):
+        return jsonify({'error': 'No permission to manage this user'}), 403
+    data = request.json or {}
+    scope_type = data.get('scope_type')
+    scope_id = data.get('scope_id') or 0
+    if scope_type == 'all':
+        if not perm.is_super(actor):
+            return jsonify({'error': 'Only super admins can grant access to all companies'}), 403
+        scope_id = 0
+    elif scope_type not in ('company', 'department', 'board', 'item') or not scope_id:
+        return jsonify({'error': 'Invalid scope'}), 400
+    else:
+        grant_company = _grant_company_id(scope_type, int(scope_id))
+        if grant_company is None and scope_type != 'company':
+            return jsonify({'error': 'Scope target not found'}), 404
+        if not perm.can_grant_in_company(actor, grant_company):
+            return jsonify({'error': 'You can only grant access within companies you manage'}), 403
+    dupe = AccessGrant.query.filter_by(user_id=g.user_id, scope_type=scope_type,
+                                       scope_id=int(scope_id)).first()
+    if dupe and dupe.id != g.id:
+        return jsonify({'error': 'They already have that exact access'}), 409
+    old_label = _describe_scope(g)
+    g.scope_type = scope_type
+    g.scope_id = int(scope_id)
+    log_activity(actor.id, None, None, 'access_changed',
+                 f"changed {target.display_name}'s access from {old_label} to {_describe_scope(g)}",
+                 company_id=target.company_id)
+    db.session.commit()
+    return jsonify({'grant': {**g.to_dict(), 'label': _describe_scope(g)}})
+
+
 @bp.delete('/grants/<int:grant_id>')
 @login_required
 def delete_grant(actor, grant_id):
@@ -367,7 +404,7 @@ def delete_role(user, role_id):
 AUDIT_ACTIONS = ('board_deleted', 'item_deleted', 'group_deleted', 'column_deleted',
                  'company_deleted', 'department_deleted', 'role_deleted',
                  'user_created', 'user_deactivated', 'user_activated', 'user_role_changed',
-                 'access_granted', 'access_revoked')
+                 'access_granted', 'access_changed', 'access_revoked')
 
 
 @bp.get('/audit')
