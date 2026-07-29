@@ -21,13 +21,17 @@ export default function BoardView() {
   const board = ready ? boardData.board : null
   const columns = ready ? boardData.columns : []
   const items = ready ? boardData.items : []
-  const canEdit = ready && boardData.access === 'full'
+  const { user } = useStore()
+  const cap = (c) => (user.capabilities || []).includes(c)
+  const fullAccess = ready && boardData.access === 'full'
+  const canEdit = fullAccess && cap('manage_boards')      // structure: groups, columns, automations
+  const canCreate = fullAccess && cap('create_jobs')      // add jobs
+  const canEditItems = cap('edit_jobs')                   // change values, updates, files
   const dept = ready ? boardData.department : null
   const company = dept ? workspace.companies.find(c => c.id === dept.company_id) : null
 
   const statusCol = columns.find(c => c.type === 'status')
   const statusLabels = statusCol?.settings?.labels || []
-  const { user } = useStore()
 
   // job-scoped people eligibility (from the board payload)
   const assignable = ready ? boardData.assignable : null
@@ -144,7 +148,7 @@ export default function BoardView() {
         </div>
 
         <div className="board-toolbar">
-          {canEdit && <button className="btn btn-primary" onClick={async () => {
+          {canCreate && <button className="btn btn-primary" onClick={async () => {
             try {
               await api.post(`/api/boards/${board.id}/items`, { name: 'New item' })
               await refreshBoard()
@@ -199,8 +203,9 @@ export default function BoardView() {
       </div>
 
       {view === 'table'
-        ? <TableView items={filtered} canEdit={canEdit} usersFor={usersFor} />
-        : <KanbanView items={filtered} canEdit={canEdit} usersFor={usersFor} />}
+        ? <TableView items={filtered} canEdit={canEdit} canCreate={canCreate}
+            canEditItems={canEditItems} usersFor={usersFor} />
+        : <KanbanView items={filtered} canEdit={canEdit} canEditItems={canEditItems} usersFor={usersFor} />}
 
       {showRules && <RulesModal board={board} columns={columns} onClose={() => setShowRules(false)} />}
     </div>

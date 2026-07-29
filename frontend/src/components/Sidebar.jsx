@@ -29,32 +29,39 @@ export default function Sidebar() {
     setCompaniesOpen(next)
     localStorage.setItem('tm-companies-open', next ? '1' : '0')
   }
-
-  const canManage = (companyId) =>
-    user.role === 'super_admin' ||
-    (user.role === 'company_admin' && user.company_id === companyId)
+  const [collapsed, setCollapsed] = useState(localStorage.getItem('tm-sidebar-collapsed') === '1')
+  function toggleCollapsed() {
+    const next = !collapsed
+    setCollapsed(next)
+    localStorage.setItem('tm-sidebar-collapsed', next ? '1' : '0')
+  }
 
   return (
     <>
       {sidebarMobile && <div className="sidebar-backdrop" onClick={toggleSidebarMobile} />}
-      <aside className={`sidebar ${sidebarMobile ? 'mobile-open' : ''}`}>
+      <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${sidebarMobile ? 'mobile-open' : ''}`}>
         <div className="sidebar-brand">
           <span className="brand-icon">✅</span>
           <span className="brand-name">TaskMaster</span>
+          <button className="sidebar-toggle" onClick={toggleCollapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            {collapsed ? '»' : '«'}
+          </button>
         </div>
 
         <nav className="sidebar-nav">
-          <button className={`nav-item ${route.page === 'home' ? 'active' : ''}`}
+          <button className={`nav-item ${route.page === 'home' ? 'active' : ''}`} title="Home"
             onClick={() => navigate({ page: 'home' })}>
-            <span className="nav-icon">🏡</span>Home
+            <span className="nav-icon">🏡</span><span className="nav-label">Home</span>
           </button>
-          <button className={`nav-item ${route.page === 'mywork' ? 'active' : ''}`}
+          <button className={`nav-item ${route.page === 'mywork' ? 'active' : ''}`} title="My Work"
             onClick={() => navigate({ page: 'mywork' })}>
-            <span className="nav-icon">🗂️</span>My Work
+            <span className="nav-icon">🗂️</span><span className="nav-label">My Work</span>
           </button>
-          <div className={`nav-item companies-nav ${route.page === 'companies' ? 'active' : ''}`}>
+          <div className={`nav-item companies-nav ${route.page === 'companies' ? 'active' : ''}`} title="Companies"
+            onClick={collapsed ? () => navigate({ page: 'companies' }) : undefined}>
             <span className="nav-icon">🏛️</span>
-            <span className="companies-nav-label" onClick={() => navigate({ page: 'companies' })}>Companies</span>
+            <span className="companies-nav-label nav-label" onClick={() => navigate({ page: 'companies' })}>Companies</span>
             <button className="tree-chevron companies-chevron" onClick={toggleCompaniesSection}>
               {companiesOpen ? '▾' : '▸'}
             </button>
@@ -87,8 +94,10 @@ export default function Sidebar() {
                     </button>
                     <span className="tree-label" title={d.name}
                       onClick={() => navigate({ page: 'department', deptId: d.id })}>{d.icon} {d.name}</span>
-                    <button className="icon-btn tree-add" title="New board"
-                      onClick={() => setNewBoardDept(d)}>＋</button>
+                    {d.can_create_board && (
+                      <button className="icon-btn tree-add" title="New board"
+                        onClick={() => setNewBoardDept(d)}>＋</button>
+                    )}
                   </div>
                   {!closedDepts.has(d.id) && d.boards.filter(b => !b.archived).map(b => (
                     <BoardNode key={b.id} board={b}
@@ -114,14 +123,14 @@ export default function Sidebar() {
 
         <div className="sidebar-bottom">
           {['super_admin', 'admin', 'company_admin'].includes(user.role) && (
-            <button className={`nav-item ${route.page === 'admin' ? 'active' : ''}`}
+            <button className={`nav-item ${route.page === 'admin' ? 'active' : ''}`} title="Users"
               onClick={() => navigate({ page: 'admin', tab: 'users' })}>
-              <span className="nav-icon">👥</span>Users
+              <span className="nav-icon">👥</span><span className="nav-label">Users</span>
             </button>
           )}
-          <button className={`nav-item ${route.page === 'settings' ? 'active' : ''}`}
+          <button className={`nav-item ${route.page === 'settings' ? 'active' : ''}`} title="Settings"
             onClick={() => navigate({ page: 'settings' })}>
-            <span className="nav-icon">⚙️</span>Settings
+            <span className="nav-icon">⚙️</span><span className="nav-label">Settings</span>
           </button>
         </div>
 

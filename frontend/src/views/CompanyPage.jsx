@@ -23,11 +23,15 @@ export default function CompanyPage() {
   useEffect(() => { load() }, [route.companyId])
 
   if (!data) return <div className="muted page-loading">Loading…</div>
-  const { company, boards, departments, can_manage } = data
+  const { company, boards, departments, can_manage, can_create_board } = data
+  const cap = (c) => (user.capabilities || []).includes(c)
+  // "+ Add job" needs a board we can fully use, or the right to create one
+  const canAddJob = cap('create_jobs') &&
+    (boards.some(b => b.access === 'full' && !b.archived) || can_create_board)
 
   async function quickAddJob() {
     try {
-      let board = boards[0]
+      let board = boards.find(b => b.access === 'full' && !b.archived)
       if (!board) {
         const created = await api.post(`/api/companies/${company.id}/boards`, { name: 'Jobs', icon: '🧰' })
         board = created.board
@@ -54,8 +58,8 @@ export default function CompanyPage() {
           {can_manage && <button className="btn btn-secondary" onClick={() => setShowUsers(true)}>👥 Users</button>}
           {can_manage && <button className="btn btn-secondary" onClick={() => setEditing(true)}>✏️ Edit details</button>}
           {can_manage && <button className="btn btn-secondary" onClick={() => setNewDept(true)}>＋ Department</button>}
-          {can_manage && <button className="btn btn-secondary" onClick={() => setNewBoard('direct')}>＋ Job board</button>}
-          <button className="btn btn-primary" onClick={quickAddJob}>＋ Add job</button>
+          {can_create_board && <button className="btn btn-secondary" onClick={() => setNewBoard('direct')}>＋ Job board</button>}
+          {canAddJob && <button className="btn btn-primary" onClick={quickAddJob}>＋ Add job</button>}
           {user.role === 'super_admin' && (
             <button className="btn btn-danger" title="Delete this company (departments and boards must be removed first)"
               onClick={async () => {
@@ -82,6 +86,7 @@ export default function CompanyPage() {
         ))}
       </div>
 
+      {(boards.some(b => !b.archived) || can_create_board) && (
       <section className="entity-section">
         <h3>🧰 Company jobs <span className="muted">(no department)</span></h3>
         <div className="board-cards">
@@ -92,7 +97,7 @@ export default function CompanyPage() {
               {b.access === 'partial' && <span className="muted">🔒 limited</span>}
             </button>
           ))}
-          {can_manage && (
+          {can_create_board && (
             <button className="board-card board-card-add" onClick={() => setNewBoard('direct')}>
               <span className="board-card-icon">＋</span>
               <span className="board-card-name">New job board</span>
@@ -100,7 +105,9 @@ export default function CompanyPage() {
           )}
         </div>
       </section>
+      )}
 
+      {(departments.length > 0 || can_manage) && (
       <section className="entity-section">
         <h3>🏢 Departments</h3>
         <div className="board-cards">
@@ -121,6 +128,7 @@ export default function CompanyPage() {
           {departments.length === 0 && !can_manage && <span className="muted">No departments.</span>}
         </div>
       </section>
+      )}
 
       {showUsers && (
         <CompanyUsersModal company={company} onClose={() => setShowUsers(false)} />

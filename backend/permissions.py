@@ -330,3 +330,19 @@ def eligible_assignee_ids(item):
     ids = {u.id for u in board_users}
     ids |= {u.id for u in item_extra.get(item.id, [])}
     return ids
+
+
+def can_create_board_in(user, company_id, dept_id=None):
+    """May the user create a board directly in this company / department?"""
+    if is_super(user) or can_manage_company(user, company_id):
+        return True
+    if not has_cap(user, CAP_BOARDS):
+        return False
+    for g in user_grants(user):
+        if g.scope_type == 'all':
+            return True
+        if g.scope_type == 'company' and g.scope_id == company_id:
+            return True
+        if dept_id and g.scope_type == 'department' and g.scope_id == dept_id:
+            return True
+    return False

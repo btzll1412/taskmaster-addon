@@ -39,14 +39,7 @@ def list_boards(user):
 
 
 def _can_create_in_company(user, company_id, dept_id=None):
-    if perm.is_super(user) or perm.can_manage_company(user, company_id):
-        return True
-    if not perm.has_cap(user, perm.CAP_BOARDS):
-        return False
-    return (any(g.scope_type in ('all', 'company') and (g.scope_type == 'all' or g.scope_id == company_id)
-                for g in perm.user_grants(user))
-            or (dept_id and any(g.scope_type == 'department' and g.scope_id == dept_id
-                                for g in perm.user_grants(user))))
+    return perm.can_create_board_in(user, company_id, dept_id)
 
 
 def _create_board(user, data, dept=None, company_id=None):

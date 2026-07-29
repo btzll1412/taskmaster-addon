@@ -27,6 +27,10 @@ export default function ItemPanel({ itemId }) {
 
   if (!data) return null
   const { item, updates, files, activity, subitems, parent } = data
+  const cap = (c) => (user.capabilities || []).includes(c)
+  const canEditItems = cap('edit_jobs')
+  const canCreate = cap('create_jobs')
+  const canWrite = (user.capabilities || []).length > 0
   const columns = boardData?.board?.id === item.board_id ? boardData.columns : []
   const assignable = boardData?.board?.id === item.board_id ? boardData.assignable : null
   const jobUsers = (() => {
@@ -68,15 +72,16 @@ export default function ItemPanel({ itemId }) {
                 ↰ {parent.name}
               </button>
             )}
-            <ItemPanelName item={item} act={act} />
+            <ItemPanelName item={item} act={act} canEdit={canEditItems} />
           </div>
-          <FlagButton item={item} users={jobUsers} me={user} showToast={showToast} />
+          {canWrite && <FlagButton item={item} users={jobUsers} me={user} showToast={showToast} />}
           <ShareButton item={item} users={users} me={user} boardAccess={boardData?.access} showToast={showToast} />
           <button className="icon-btn" onClick={closeItem}>✕</button>
         </div>
 
-        {!item.parent_id && (
-          <SubItems item={item} subitems={subitems || []} columns={columns} users={users} act={act} />
+        {!item.parent_id && ((subitems || []).length > 0 || canCreate) && (
+          <SubItems item={item} subitems={subitems || []} columns={columns} users={users}
+            act={act} canCreate={canCreate} />
         )}
 
         {columns.length > 0 && (
@@ -85,6 +90,7 @@ export default function ItemPanel({ itemId }) {
               <div key={col.id} className="panel-field">
                 <label>{col.title}</label>
                 <Cell column={col} value={item.values[String(col.id)]} users={jobUsers} compact
+                  disabled={!canEditItems}
                   onChange={v => act(api.put(`/api/items/${item.id}/values/${col.id}`, { value: v }))} />
               </div>
             ))}
@@ -106,12 +112,14 @@ export default function ItemPanel({ itemId }) {
         <div className="panel-body">
           {tab === 'updates' && (
             <div className="updates-tab">
-              <form className="update-composer" onSubmit={postUpdate}>
-                <textarea placeholder="Write an update… use @username to flag someone" value={body} rows={3}
-                  onChange={e => setBody(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postUpdate(e) }} />
-                <button className="btn btn-primary btn-small" disabled={!body.trim()}>Update</button>
-              </form>
+              {canEditItems && (
+                <form className="update-composer" onSubmit={postUpdate}>
+                  <textarea placeholder="Write an update… use @username to flag someone" value={body} rows={3}
+                    onChange={e => setBody(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postUpdate(e) }} />
+                  <button className="btn btn-primary btn-small" disabled={!body.trim()}>Update</button>
+                </form>
+              )}
               {updates.map(u => {
                 const author = userById(u.user_id)
                 return (
@@ -135,11 +143,15 @@ export default function ItemPanel({ itemId }) {
 
           {tab === 'files' && (
             <div className="files-tab">
-              <button className="btn btn-secondary" onClick={() => fileInput.current.click()}>
-                📤 Upload files
-              </button>
-              <input type="file" ref={fileInput} multiple hidden
-                onChange={e => { uploadFiles([...e.target.files]); e.target.value = '' }} />
+              {canEditItems && (
+                <>
+                  <button className="btn btn-secondary" onClick={() => fileInput.current.click()}>
+                    📤 Upload files
+                  </button>
+                  <input type="file" ref={fileInput} multiple hidden
+                    onChange={e => { uploadFiles([...e.target.files]); e.target.value = '' }} />
+                </>
+              )}
               <div className="files-grid">
                 {files.map(f => (
                   <div key={f.id} className="file-card">
@@ -187,8 +199,9 @@ export default function ItemPanel({ itemId }) {
   )
 }
 
-function ItemPanelName({ item, act }) {
+function ItemPanelName({ item, act, canEdit }) {
   const [editing, setEditing] = useState(false)
+  if (!canEdit) return <h3 className="panel-name">{item.name}</h3>
   if (editing) {
     return (
       <input className="panel-name-input" autoFocus defaultValue={item.name}
@@ -199,7 +212,7 @@ function ItemPanelName({ item, act }) {
   return <h3 className="panel-name" onClick={() => setEditing(true)}>{item.name}</h3>
 }
 
-function SubItems({ item, subitems, columns, users, act }) {
+function SubItems({ item, subitems, columns, users, act, canCreate }) {
   const [name, setName] = useState('')
   const { openItem } = useStore()
   const statusCol = columns.find(c => c.type === 'status')
@@ -219,15 +232,17 @@ function SubItems({ item, subitems, columns, users, act }) {
           </button>
         )
       })}
-      <form className="add-sub-form" onSubmit={async (e) => {
-        e.preventDefault()
-        const v = name.trim()
-        if (!v) return
-        setName('')
-        await act(api.post(`/api/boards/${item.board_id}/items`, { name: v, parent_id: item.id }))
-      }}>
-        <input placeholder="＋ Add sub-task" value={name} onChange={e => setName(e.target.value)} />
-      </form>
+      {canCreate && (
+        <form className="add-sub-form" onSubmit={async (e) => {
+          e.preventDefault()
+          const v = name.trim()
+          if (!v) return
+          setName('')
+          await act(api.post(`/api/boards/${item.board_id}/items`, { name: v, parent_id: item.id }))
+        }}>
+          <input placeholder="＋ Add sub-task" value={name} onChange={e => setName(e.target.value)} />
+        </form>
+      )}
     </div>
   )
 }

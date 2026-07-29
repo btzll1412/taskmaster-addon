@@ -210,13 +210,19 @@
   .hamburger { display: inline-flex; font-size: 18px; width: 38px; height: 38px; }
   .sidebar {
     position: fixed; left: 0; top: 0; height: 100dvh; z-index: 620;
-    width: 264px !important; /* drawer ignores the desktop collapsed state */
+    width: 290px !important; /* drawer ignores the desktop collapsed state */
     transform: translateX(-105%); transition: transform .2s ease;
     box-shadow: none;
   }
   .sidebar.mobile-open { transform: translateX(0); box-shadow: var(--shadow-lg); }
-  .sidebar-collapsed .brand-name,
-  .sidebar-collapsed .board-item-name { display: inline; }
+  /* the drawer always shows the full sidebar, even if collapsed on desktop */
+  .sidebar.collapsed .brand-name,
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .companies-chevron { display: inline-flex; }
+  .sidebar.collapsed .sidebar-section { visibility: visible; }
+  .sidebar.collapsed .sidebar-brand { flex-direction: row; gap: 10px; padding: 16px 14px; }
+  .sidebar.collapsed .nav-item { justify-content: flex-start; padding: 9px 12px; gap: 10px; }
+  .sidebar-toggle { display: none; }
   .sidebar-backdrop {
     display: block; position: fixed; inset: 0; z-index: 610;
     background: rgba(23, 30, 60, .4);
