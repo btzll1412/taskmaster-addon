@@ -16,6 +16,7 @@ export default function Settings() {
       <div className="entity-head"><h2>⚙️ Settings</h2></div>
 
       <ProfileSection user={user} init={init} showToast={showToast} />
+      <PreferencesSection user={user} init={init} showToast={showToast} />
       <PasswordSection showToast={showToast} />
       <AppearanceSection />
       {canRoles && <RolesSection user={user} workspace={workspace} showToast={showToast} />}
@@ -52,6 +53,27 @@ function ProfileSection({ user, init, showToast }) {
         <input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} />
         <div><button className="btn btn-primary">Save profile</button></div>
       </form>
+    </section>
+  )
+}
+
+function PreferencesSection({ user, init, showToast }) {
+  const [busy, setBusy] = useState(false)
+  async function toggle(e) {
+    setBusy(true)
+    try {
+      await api.put('/api/auth/profile', { hide_done: e.target.checked })
+      await init()
+    } catch (err) { showToast(err.message) }
+    finally { setBusy(false) }
+  }
+  return (
+    <section className="settings-card">
+      <h3>🧹 Preferences</h3>
+      <label className="radio-row pref-row">
+        <input type="checkbox" checked={!!user.hide_done} disabled={busy} onChange={toggle} />
+        <span>Hide <strong>Done</strong> items on boards <span className="muted">(you can always bring them back by unchecking this, or by using the status filter)</span></span>
+      </label>
     </section>
   )
 }

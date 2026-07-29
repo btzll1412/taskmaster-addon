@@ -95,5 +95,7 @@ def update_profile(user):
         user.color = data['color']
     if 'email' in data:
         user.email = data['email'].strip() or None
+    if 'hide_done' in data:
+        user.hide_done = bool(data['hide_done'])
     db.session.commit()
     return jsonify({'user': user.to_dict(include_private=True)})
