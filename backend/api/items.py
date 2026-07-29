@@ -189,6 +189,15 @@ def set_value(user, item_id, column_id):
     if col.type == 'people':
         old_ids = set((old_value or {}).get('user_ids') or [])
         new_ids = set((value or {}).get('user_ids') or [])
+        # only people with access to this company/job may be assigned
+        added = new_ids - old_ids
+        if added:
+            eligible = perm.eligible_assignee_ids(item)
+            bad = added - eligible
+            if bad:
+                db.session.rollback()
+                names = [x.display_name for x in User.query.filter(User.id.in_(bad)).all()]
+                return jsonify({'error': f'{", ".join(names) or "That person"} has no access to this job — grant access first (🔑)'}), 400
         board = Board.query.get(item.board_id)
         for uid in new_ids - old_ids:
             notify_user(uid, user.id, 'assigned', item.board_id, item.id,
@@ -265,8 +274,8 @@ def flag_item(user, item_id):
         return jsonify({'error': 'No access to this item'}), 403
     target_id = (request.json or {}).get('user_id')
     target = db.session.get(User, target_id) if target_id else None
-    if not target or target.id not in {u.id for u in perm.visible_users(user)}:
-        return jsonify({'error': 'User not found'}), 404
+    if not target or target.id not in perm.eligible_assignee_ids(item):
+        return jsonify({'error': 'That person has no access to this job'}), 404
     board = db.session.get(Board, item.board_id)
     notify_user(target.id, user.id, 'mention', item.board_id, item.id,
                 f'{user.display_name} flagged you on "{item.name}" ({board.name})')

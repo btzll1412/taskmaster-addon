@@ -527,3 +527,8 @@
 .audit-row:last-child { border-bottom: none; }
 .audit-text { flex: 1; min-width: 0; }
 .audit-time { font-size: 12px; white-space: nowrap; }
+
+/* ---------- Company users modal ---------- */
+.company-users { display: flex; flex-direction: column; gap: 8px; }
+.company-users-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.user-highlight { border-color: var(--primary) !important; box-shadow: 0 0 0 2px rgba(0, 115, 234, .25); }

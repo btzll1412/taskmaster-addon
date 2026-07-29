@@ -72,10 +72,18 @@ function AuditSection() {
 /* ================= Users ================= */
 
 function UsersTab() {
-  const { user, users, refreshUsers, workspace, showToast } = useStore()
-  const [showNew, setShowNew] = useState(false)
+  const { user, users, refreshUsers, workspace, showToast, route } = useStore()
+  const [showNew, setShowNew] = useState(!!route.newUserCompany)
   const [pwUser, setPwUser] = useState(null)
   const [grantsUser, setGrantsUser] = useState(null)
+  const highlightId = route.editUserId
+
+  useEffect(() => {
+    if (highlightId) {
+      const el = document.getElementById(`user-row-${highlightId}`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [highlightId, users.length])
 
   const canManage = (u) =>
     user.role === 'super_admin' ||
@@ -109,7 +117,8 @@ function UsersTab() {
 
       <div className="user-table">
         {users.map(u => (
-          <div key={u.id} className={`user-row ${u.is_active ? '' : 'user-inactive'}`}>
+          <div key={u.id} id={`user-row-${u.id}`}
+            className={`user-row ${u.is_active ? '' : 'user-inactive'} ${highlightId === u.id ? 'user-highlight' : ''}`}>
             <Avatar user={u} size={34} />
             <div className="user-info">
               <strong>{u.display_name}</strong>
@@ -152,6 +161,7 @@ function UsersTab() {
       </div>
 
       {showNew && <NewUserModal me={user} workspace={workspace}
+        defaultCompanyId={route.newUserCompany}
         onClose={() => setShowNew(false)}
         onDone={() => { setShowNew(false); refreshUsers() }} showToast={showToast} />}
       {pwUser && <SetPasswordModal user={pwUser} onClose={() => setPwUser(null)} showToast={showToast} />}
@@ -160,13 +170,14 @@ function UsersTab() {
   )
 }
 
-function NewUserModal({ me, workspace, onClose, onDone, showToast }) {
+function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showToast }) {
   const [roles, setRoles] = useState([])
   useEffect(() => { api.get('/api/roles').then(d => setRoles(d.roles)).catch(() => {}) }, [])
   const isSuper = me.role === 'super_admin'
   const [form, setForm] = useState({
     username: '', display_name: '', password: '', color: '#579bfc',
-    company_id: me.role === 'company_admin' ? String(me.company_id) : '',
+    company_id: me.role === 'company_admin' ? String(me.company_id)
+      : defaultCompanyId ? String(defaultCompanyId) : '',
     roleChoice: 'level:member',
     siteMode: 'specific', company_ids: [],
   })

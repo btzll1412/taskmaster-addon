@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
-import { Modal, EmojiPicker } from '../components/ui'
+import { Avatar, Modal, EmojiPicker } from '../components/ui'
+
+const ROLE_LABEL = {
+  super_admin: 'Super admin', admin: 'Admin (IT staff)',
+  company_admin: 'Company admin', member: 'Member', viewer: 'Viewer',
+}
 
 export default function CompanyPage() {
   const { user, route, navigate, openBoard, refreshBoards, showToast } = useStore()
@@ -9,6 +14,7 @@ export default function CompanyPage() {
   const [editing, setEditing] = useState(false)
   const [newDept, setNewDept] = useState(false)
   const [newBoard, setNewBoard] = useState(null) // 'direct' | dept object
+  const [showUsers, setShowUsers] = useState(false)
 
   async function load() {
     try { setData(await api.get(`/api/companies/${route.companyId}`)) }
@@ -45,6 +51,7 @@ export default function CompanyPage() {
       <div className="entity-head">
         <h2>🏛️ {company.name}</h2>
         <div className="entity-actions">
+          {can_manage && <button className="btn btn-secondary" onClick={() => setShowUsers(true)}>👥 Users</button>}
           {can_manage && <button className="btn btn-secondary" onClick={() => setEditing(true)}>✏️ Edit details</button>}
           {can_manage && <button className="btn btn-secondary" onClick={() => setNewDept(true)}>＋ Department</button>}
           {can_manage && <button className="btn btn-secondary" onClick={() => setNewBoard('direct')}>＋ Job board</button>}
@@ -115,6 +122,9 @@ export default function CompanyPage() {
         </div>
       </section>
 
+      {showUsers && (
+        <CompanyUsersModal company={company} onClose={() => setShowUsers(false)} />
+      )}
       {editing && (
         <CompanyDetailsModal company={company} onClose={() => setEditing(false)}
           onSaved={() => { setEditing(false); load(); refreshBoards() }} showToast={showToast} />
@@ -136,6 +146,48 @@ export default function CompanyPage() {
         </Modal>
       )}
     </div>
+  )
+}
+
+/** All users belonging to this company, with quick add/edit jumps. */
+function CompanyUsersModal({ company, onClose }) {
+  const { users, navigate } = useStore()
+  const companyUsers = users.filter(u => u.company_id === company.id)
+
+  function go(route) {
+    onClose()
+    navigate(route)
+  }
+
+  return (
+    <Modal title={`Users — ${company.name}`} onClose={onClose} wide>
+      <div className="company-users">
+        {companyUsers.length === 0 && (
+          <p className="muted">No users in this company yet.</p>
+        )}
+        {companyUsers.map(u => (
+          <div key={u.id} className={`user-row ${u.is_active ? '' : 'user-inactive'}`}>
+            <Avatar user={u} size={32} />
+            <div className="user-info">
+              <strong>{u.display_name}</strong>
+              <span className="muted">@{u.username}</span>
+            </div>
+            {!u.has_password && <span className="pw-warning">⚠️ No password</span>}
+            <span className={`role-tag ${u.role}`}>{u.role_name || ROLE_LABEL[u.role] || u.role}</span>
+            <button className="btn btn-small"
+              onClick={() => go({ page: 'admin', tab: 'users', editUserId: u.id })}>
+              ✏️ Edit
+            </button>
+          </div>
+        ))}
+        <div className="company-users-foot">
+          <button className="btn btn-primary"
+            onClick={() => go({ page: 'admin', tab: 'users', newUserCompany: company.id })}>
+            ＋ Add user to {company.name}
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
