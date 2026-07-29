@@ -289,3 +289,44 @@ def can_grant_in_company(actor, company_id):
     if actor.company_id == company_id:
         return actor.role == 'company_admin' or has_cap(actor, CAP_ACCESS)
     return False
+
+
+def board_assignable(board):
+    """Who may be assigned/flagged on this board.
+
+    Returns (board_wide_users, {item_id: [users]}):
+    - board_wide: the board's company employees + IT staff / outsiders whose
+      grants cover the whole board or wider
+    - per-item: people whose only access is a single-job grant — they are
+      assignable on exactly that job (and its sub-tasks)
+    """
+    company_id = board_company_id(board)
+    board_users, item_extra = [], {}
+    for u in User.query.filter_by(is_active=True).all():
+        if u.company_id == company_id:
+            board_users.append(u)
+            continue
+        if is_super(u) or board.id in _granted_board_ids(u):
+            board_users.append(u)
+            continue
+        granted_items = [g.scope_id for g in AccessGrant.query.filter_by(
+            user_id=u.id, scope_type='item').all()]
+        if granted_items:
+            jobs = Item.query.filter(Item.id.in_(granted_items),
+                                     Item.board_id == board.id).all()
+            for job in jobs:
+                item_extra.setdefault(job.id, []).append(u)
+                for sub in Item.query.filter_by(parent_id=job.id).all():
+                    item_extra.setdefault(sub.id, []).append(u)
+    return board_users, item_extra
+
+
+def eligible_assignee_ids(item):
+    """User ids that may be assigned/flagged on this specific job."""
+    board = db.session.get(Board, item.board_id)
+    if not board:
+        return set()
+    board_users, item_extra = board_assignable(board)
+    ids = {u.id for u in board_users}
+    ids |= {u.id for u in item_extra.get(item.id, [])}
+    return ids

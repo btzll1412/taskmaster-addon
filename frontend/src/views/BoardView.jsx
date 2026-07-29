@@ -29,6 +29,26 @@ export default function BoardView() {
   const statusLabels = statusCol?.settings?.labels || []
   const { user } = useStore()
 
+  // job-scoped people eligibility (from the board payload)
+  const assignable = ready ? boardData.assignable : null
+  const usersFor = (item) => {
+    if (!assignable) return []
+    const ids = new Set(assignable.board_ids)
+    for (const id of (assignable.item_ids[String(item.id)] || [])) ids.add(id)
+    if (item.parent_id) for (const id of (assignable.item_ids[String(item.parent_id)] || [])) ids.add(id)
+    const out = [...ids].map(id => assignable.users[String(id)]).filter(Boolean)
+    // keep already-assigned people resolvable even if their grant was removed
+    for (const cid of columns.filter(c => c.type === 'people').map(c => String(c.id))) {
+      for (const uid of (item.values[cid]?.user_ids || [])) {
+        if (!ids.has(uid)) {
+          const u = assignable.users[String(uid)] || users.find(x => x.id === uid)
+          if (u) { out.push(u); ids.add(uid) }
+        }
+      }
+    }
+    return out
+  }
+
   const filtered = useMemo(() => {
     const peopleColIds = columns.filter(c => c.type === 'people').map(c => String(c.id))
     const doneIds = new Set(statusLabels.filter(l => l.label.toLowerCase() === 'done').map(l => l.id))
@@ -61,7 +81,9 @@ export default function BoardView() {
     try { await promise; await refreshBoard(); await refreshBoards() } catch (e) { showToast(e.message) }
   }
 
-  const activeUsers = users.filter(u => u.is_active)
+  const activeUsers = assignable
+    ? assignable.board_ids.map(id => assignable.users[String(id)]).filter(u => u && u.is_active)
+    : users.filter(u => u.is_active)
 
   return (
     <div className="board-view">
@@ -177,8 +199,8 @@ export default function BoardView() {
       </div>
 
       {view === 'table'
-        ? <TableView items={filtered} canEdit={canEdit} />
-        : <KanbanView items={filtered} canEdit={canEdit} />}
+        ? <TableView items={filtered} canEdit={canEdit} usersFor={usersFor} />
+        : <KanbanView items={filtered} canEdit={canEdit} usersFor={usersFor} />}
 
       {showRules && <RulesModal board={board} columns={columns} onClose={() => setShowRules(false)} />}
     </div>

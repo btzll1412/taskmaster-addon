@@ -237,6 +237,7 @@ class Activity(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     board_id = db.Column(db.Integer, db.ForeignKey('boards.id', ondelete='CASCADE'))
     item_id = db.Column(db.Integer)
+    company_id = db.Column(db.Integer)  # audit scoping; survives board deletion
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     action = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text, nullable=False)
@@ -255,6 +256,7 @@ class Activity(db.Model):
             'id': self.id,
             'board_id': self.board_id,
             'item_id': self.item_id,
+            'company_id': self.company_id,
             'user_id': self.user_id,
             'action': self.action,
             'description': self.description,

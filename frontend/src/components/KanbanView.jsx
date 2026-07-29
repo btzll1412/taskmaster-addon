@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { AvatarStack, fmtDate, dueClass } from './ui'
 
 /** Kanban view: lanes come from the labels of a status-type column. */
-export default function KanbanView({ items, canEdit }) {
+export default function KanbanView({ items, canEdit, usersFor }) {
   items = items.filter(i => !i.parent_id)
   const { boardData, users, refreshBoard, openItem, showToast } = useStore()
   const { board, columns } = boardData
@@ -74,7 +74,7 @@ export default function KanbanView({ items, canEdit }) {
               </div>
               <div className="lane-cards">
                 {laneList.map(item => (
-                  <KanbanCard key={item.id} item={item} users={users} laneColor={lane.color}
+                  <KanbanCard key={item.id} item={item} users={usersFor ? usersFor(item) : users} laneColor={lane.color}
                     peopleCol={peopleCol} dateCol={dateCol} prioCol={prioCol}
                     onOpen={() => openItem(item.id)} />
                 ))}

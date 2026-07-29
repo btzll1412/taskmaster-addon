@@ -139,6 +139,10 @@ def delete_board(user, board_id):
             or (company_id and perm.can_manage_company(user, company_id))):
         return jsonify({'error': 'Only the board owner or an admin can delete a board'}), 403
     name = board.name
+    dept = db.session.get(Department, board.department_id) if board.department_id else None
+    where = f' ({dept.name})' if dept else ''
+    log_activity(user.id, None, None, 'board_deleted',
+                 f'deleted board "{name}"{where}', company_id=company_id)
     db.session.delete(board)
     db.session.commit()
     broadcast_board(board_id, kind='board_deleted')

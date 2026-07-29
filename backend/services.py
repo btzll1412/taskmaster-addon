@@ -39,10 +39,10 @@ COLUMN_DEFAULT_WIDTH = {
 }
 
 
-def log_activity(user_id, board_id, item_id, action, description):
+def log_activity(user_id, board_id, item_id, action, description, company_id=None):
     db.session.add(Activity(
         user_id=user_id, board_id=board_id, item_id=item_id,
-        action=action, description=description,
+        company_id=company_id, action=action, description=description,
     ))
 
 
@@ -112,12 +112,24 @@ def serialize_board_full(board, visible_ids=None, access='full'):
         d = i.to_dict(values=values.get(i.id, {}), counts=counts.get(i.id))
         d['subitems_count'] = subitem_counts.get(i.id, 0)
         out_items.append(d)
+    from . import permissions as perm
+    board_users, item_extra = perm.board_assignable(board)
+    user_map = {u.id: u for u in board_users}
+    for lst in item_extra.values():
+        for u in lst:
+            user_map[u.id] = u
+    assignable = {
+        'users': {str(uid): u.to_dict() for uid, u in user_map.items()},
+        'board_ids': [u.id for u in board_users],
+        'item_ids': {str(iid): [u.id for u in lst] for iid, lst in item_extra.items()},
+    }
     return {
         'board': board.to_dict(),
         'groups': [g.to_dict() for g in groups],
         'columns': [c.to_dict() for c in columns],
         'items': out_items,
         'access': access,
+        'assignable': assignable,
     }
 
 

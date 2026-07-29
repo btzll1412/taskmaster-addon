@@ -513,3 +513,22 @@
 .cap-option.selected { border-color: var(--primary); background: rgba(0, 115, 234, .08); }
 .role-row .role-caps { flex: 1; display: flex; gap: 4px; flex-wrap: wrap; }
 .cap-chip { background: var(--primary); font-size: 11px; }
+
+/* ---------- Danger button + audit log ---------- */
+.btn-danger { background: var(--surface); border: 1px solid var(--danger); color: var(--danger); }
+.btn-danger:hover { background: var(--danger); color: #fff; }
+.audit-card { margin-top: 24px; }
+.audit-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.audit-list { display: flex; flex-direction: column; }
+.audit-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 4px;
+  border-bottom: 1px solid var(--border-light); line-height: 1.4;
+}
+.audit-row:last-child { border-bottom: none; }
+.audit-text { flex: 1; min-width: 0; }
+.audit-time { font-size: 12px; white-space: nowrap; }
+
+/* ---------- Company users modal ---------- */
+.company-users { display: flex; flex-direction: column; gap: 8px; }
+.company-users-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.user-highlight { border-color: var(--primary) !important; box-shadow: 0 0 0 2px rgba(0, 115, 234, .25); }

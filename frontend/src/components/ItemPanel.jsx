@@ -28,7 +28,15 @@ export default function ItemPanel({ itemId }) {
   if (!data) return null
   const { item, updates, files, activity, subitems, parent } = data
   const columns = boardData?.board?.id === item.board_id ? boardData.columns : []
-  const userById = (id) => users.find(u => u.id === id)
+  const assignable = boardData?.board?.id === item.board_id ? boardData.assignable : null
+  const jobUsers = (() => {
+    if (!assignable) return users
+    const ids = new Set(assignable.board_ids)
+    for (const id of (assignable.item_ids[String(item.id)] || [])) ids.add(id)
+    if (item.parent_id) for (const id of (assignable.item_ids[String(item.parent_id)] || [])) ids.add(id)
+    return [...ids].map(id => assignable.users[String(id)]).filter(Boolean)
+  })()
+  const userById = (id) => (assignable && assignable.users[String(id)]) || users.find(u => u.id === id)
 
   async function act(promise) {
     try { await promise; await load(); refreshBoard() } catch (e) { showToast(e.message) }
@@ -62,7 +70,7 @@ export default function ItemPanel({ itemId }) {
             )}
             <ItemPanelName item={item} act={act} />
           </div>
-          <FlagButton item={item} users={users} me={user} showToast={showToast} />
+          <FlagButton item={item} users={jobUsers} me={user} showToast={showToast} />
           <ShareButton item={item} users={users} me={user} boardAccess={boardData?.access} showToast={showToast} />
           <button className="icon-btn" onClick={closeItem}>✕</button>
         </div>
@@ -76,7 +84,7 @@ export default function ItemPanel({ itemId }) {
             {columns.map(col => (
               <div key={col.id} className="panel-field">
                 <label>{col.title}</label>
-                <Cell column={col} value={item.values[String(col.id)]} users={users} compact
+                <Cell column={col} value={item.values[String(col.id)]} users={jobUsers} compact
                   onChange={v => act(api.put(`/api/items/${item.id}/values/${col.id}`, { value: v }))} />
               </div>
             ))}

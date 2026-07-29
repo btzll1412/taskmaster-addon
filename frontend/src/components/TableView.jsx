@@ -15,7 +15,7 @@ const COLUMN_TYPES = [
   { type: 'checkbox', label: 'Checkbox', icon: '☑️' },
 ]
 
-export default function TableView({ items, canEdit }) {
+export default function TableView({ items, canEdit, usersFor }) {
   const { boardData, users, refreshBoard, openItem, showToast } = useStore()
   const { board, groups, columns } = boardData
 
@@ -33,6 +33,7 @@ export default function TableView({ items, canEdit }) {
     <div className="table-view">
       {groups.map(group => (
         <GroupTable key={group.id} group={group} columns={columns} users={users}
+          usersFor={usersFor}
           items={items.filter(i => i.group_id === group.id)}
           groups={groups} board={board} canEdit={canEdit}
           act={act} setValue={setValue} updateColumnSettings={updateColumnSettings}
@@ -48,7 +49,7 @@ export default function TableView({ items, canEdit }) {
   )
 }
 
-function GroupTable({ group, groups, columns, items, users, board, canEdit,
+function GroupTable({ group, groups, columns, items, users, usersFor, board, canEdit,
   act, setValue, updateColumnSettings, openItem }) {
   const [newItem, setNewItem] = useState('')
   const [editingName, setEditingName] = useState(false)
@@ -112,7 +113,7 @@ function GroupTable({ group, groups, columns, items, users, board, canEdit,
             <tbody>
               {topItems.map(item => (
                 <React.Fragment key={item.id}>
-                  <ItemRow item={item} columns={columns} users={users} groups={groups}
+                  <ItemRow item={item} columns={columns} users={usersFor ? usersFor(item) : users} groups={groups}
                     canEdit={canEdit} act={act} setValue={setValue}
                     updateColumnSettings={updateColumnSettings} openItem={openItem}
                     subCount={(subsByParent[item.id] || []).length}
@@ -121,7 +122,7 @@ function GroupTable({ group, groups, columns, items, users, board, canEdit,
                   {expanded.has(item.id) && (
                     <>
                       {(subsByParent[item.id] || []).map(sub => (
-                        <ItemRow key={sub.id} item={sub} columns={columns} users={users}
+                        <ItemRow key={sub.id} item={sub} columns={columns} users={usersFor ? usersFor(sub) : users}
                           groups={groups} canEdit={canEdit} act={act} setValue={setValue}
                           updateColumnSettings={updateColumnSettings} openItem={openItem}
                           isSub />
