@@ -44,6 +44,17 @@ export default function DepartmentPage() {
         <div className="entity-actions">
           {can_manage && <button className="btn btn-secondary" onClick={() => setNewBoard(true)}>＋ Job board</button>}
           <button className="btn btn-primary" onClick={quickAddJob}>＋ Add job</button>
+          {can_manage && (
+            <button className="btn btn-danger" title="Delete this department (boards must be removed first)"
+              onClick={async () => {
+                if (!confirm(`Delete department "${department.name}"?\n\nIts boards must be deleted first. This is logged in the audit log.`)) return
+                try {
+                  await api.del(`/api/departments/${department.id}`)
+                  await refreshBoards()
+                  navigate({ page: 'company', companyId: company.id })
+                } catch (e) { showToast(e.message) }
+              }}>🗑️ Delete</button>
+          )}
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
-import { Avatar, Modal } from '../components/ui'
+import { Avatar, Modal, timeAgo } from '../components/ui'
 
 const ROLE_LABEL = {
   super_admin: 'Super admin',
@@ -20,7 +20,52 @@ export default function AdminUsers() {
   return (
     <div className="admin-view">
       <UsersTab />
+      <AuditSection />
     </div>
+  )
+}
+
+/** Deletions and admin actions, permanent record. */
+function AuditSection() {
+  const { showToast } = useStore()
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState(null)
+
+  async function load() {
+    try { setData(await api.get('/api/audit')) }
+    catch (e) { showToast(e.message) }
+  }
+
+  return (
+    <section className="settings-card audit-card">
+      <div className="audit-head">
+        <h3>📜 Audit log</h3>
+        <button className="btn btn-small" onClick={() => {
+          const next = !open
+          setOpen(next)
+          if (next && data === null) load()
+        }}>{open ? 'Hide' : 'Show'}</button>
+      </div>
+      {open && (
+        <div className="audit-list">
+          {data === null && <div className="muted">Loading…</div>}
+          {data?.audit.length === 0 && <div className="muted">No deletions or admin actions recorded yet.</div>}
+          {data?.audit.map(a => {
+            const actor = data.users[String(a.user_id)]
+            return (
+              <div key={a.id} className="audit-row">
+                <Avatar user={actor} size={24} />
+                <span className="audit-text">
+                  <strong>{actor?.display_name || 'Someone'}</strong> {a.description}
+                </span>
+                <span className="muted audit-time">{timeAgo(a.created_at)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {!open && <p className="muted">Every deletion (companies, departments, boards, jobs) and every user/access change is recorded here permanently — even after the thing itself is gone.</p>}
+    </section>
   )
 }
 

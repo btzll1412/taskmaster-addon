@@ -39,10 +39,10 @@ COLUMN_DEFAULT_WIDTH = {
 }
 
 
-def log_activity(user_id, board_id, item_id, action, description):
+def log_activity(user_id, board_id, item_id, action, description, company_id=None):
     db.session.add(Activity(
         user_id=user_id, board_id=board_id, item_id=item_id,
-        action=action, description=description,
+        company_id=company_id, action=action, description=description,
     ))
 
 

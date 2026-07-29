@@ -5,6 +5,7 @@ from .. import permissions as perm
 from ..auth import login_required
 from ..db import db
 from ..models import AccessGrant, Company, Role, User
+from ..services import log_activity
 
 bp = Blueprint('users', __name__, url_prefix='/api/users')
 
@@ -102,6 +103,8 @@ def create_user(actor):
             if db.session.get(Company, cid) and perm.can_grant_in_company(actor, cid):
                 db.session.add(AccessGrant(user_id=u.id, scope_type='company',
                                            scope_id=int(cid), granted_by=actor.id))
+    log_activity(actor.id, None, None, 'user_created',
+                 f'created user {u.display_name} (@{u.username})', company_id=u.company_id)
     db.session.commit()
     return jsonify({'user': u.to_dict(include_private=True)}), 201
 
@@ -127,14 +130,24 @@ def update_user(actor, user_id):
     if 'role' in data or 'custom_role_id' in data:
         if u.id == actor.id:
             return jsonify({'error': 'You cannot change your own role'}), 400
+        old_role = u.role
         resolved = _resolve_role(actor, u.company_id,
                                  data.get('role') or u.role, data.get('custom_role_id'))
         if isinstance(resolved, str):
             return jsonify({'error': resolved}), 400
         u.role, u.custom_role_id = resolved
+        if u.role != old_role or 'custom_role_id' in data:
+            log_activity(actor.id, None, None, 'user_role_changed',
+                         f'changed {u.display_name}\'s role to {u.role}',
+                         company_id=u.company_id)
     if 'is_active' in data:
         if u.id == actor.id and not data['is_active']:
             return jsonify({'error': 'You cannot deactivate yourself'}), 400
+        if bool(data['is_active']) != bool(u.is_active):
+            log_activity(actor.id, None, None,
+                         'user_activated' if data['is_active'] else 'user_deactivated',
+                         f'{"reactivated" if data["is_active"] else "deactivated"} user {u.display_name} (@{u.username})',
+                         company_id=u.company_id)
         u.is_active = bool(data['is_active'])
     db.session.commit()
     return jsonify({'user': u.to_dict(include_private=True)})

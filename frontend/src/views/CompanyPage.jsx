@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { Modal, EmojiPicker } from '../components/ui'
 
 export default function CompanyPage() {
-  const { route, navigate, openBoard, refreshBoards, showToast } = useStore()
+  const { user, route, navigate, openBoard, refreshBoards, showToast } = useStore()
   const [data, setData] = useState(null)
   const [editing, setEditing] = useState(false)
   const [newDept, setNewDept] = useState(false)
@@ -49,6 +49,17 @@ export default function CompanyPage() {
           {can_manage && <button className="btn btn-secondary" onClick={() => setNewDept(true)}>＋ Department</button>}
           {can_manage && <button className="btn btn-secondary" onClick={() => setNewBoard('direct')}>＋ Job board</button>}
           <button className="btn btn-primary" onClick={quickAddJob}>＋ Add job</button>
+          {user.role === 'super_admin' && (
+            <button className="btn btn-danger" title="Delete this company (departments and boards must be removed first)"
+              onClick={async () => {
+                if (!confirm(`Delete company "${company.name}"?\n\nIts departments and boards must be deleted first. This is logged in the audit log.`)) return
+                try {
+                  await api.del(`/api/companies/${company.id}`)
+                  await refreshBoards()
+                  navigate({ page: 'companies' })
+                } catch (e) { showToast(e.message) }
+              }}>🗑️ Delete</button>
+          )}
         </div>
       </div>
 

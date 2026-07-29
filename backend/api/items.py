@@ -105,7 +105,10 @@ def delete_item(user, item_id):
     if not (perm.can_edit_board(user, board) or item.created_by == user.id):
         return jsonify({'error': 'No permission to delete this item'}), 403
     board_id = item.board_id
-    log_activity(user.id, board_id, None, 'item_deleted', f'deleted "{item.name}"')
+    kind = 'sub-task' if item.parent_id else 'job'
+    log_activity(user.id, board_id, None, 'item_deleted',
+                 f'deleted {kind} "{item.name}" from "{board.name}"',
+                 company_id=perm.board_company_id(board))
     targets = [item] + Item.query.filter_by(parent_id=item.id).all()
     for t in targets:
         ItemValue.query.filter_by(item_id=t.id).delete()

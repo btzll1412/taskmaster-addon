@@ -137,6 +137,7 @@ def delete_company(user, company_id):
         return jsonify({'error': 'Delete or move its departments first'}), 400
     if Board.query.filter_by(company_id=c.id).count():
         return jsonify({'error': 'Delete its boards first'}), 400
+    log_activity(user.id, None, None, 'company_deleted', f'deleted company "{c.name}"')
     db.session.delete(c)
     db.session.commit()
     return jsonify({'ok': True})
@@ -186,6 +187,10 @@ def delete_department(user, dept_id):
         return jsonify({'error': 'No permission to manage this company'}), 403
     if Board.query.filter_by(department_id=d.id).count():
         return jsonify({'error': 'Delete or move its boards first'}), 400
+    c = db.session.get(Company, d.company_id)
+    log_activity(user.id, None, None, 'department_deleted',
+                 f'deleted department "{d.name}" from {c.name if c else "?"}',
+                 company_id=d.company_id)
     db.session.delete(d)
     db.session.commit()
     return jsonify({'ok': True})
@@ -274,6 +279,10 @@ def create_grant(actor, user_id):
     g = AccessGrant(user_id=target.id, scope_type=scope_type,
                     scope_id=int(scope_id), granted_by=actor.id)
     db.session.add(g)
+    db.session.flush()
+    log_activity(actor.id, None, None, 'access_granted',
+                 f'granted {target.display_name} access to {_describe_scope(g)}',
+                 company_id=target.company_id)
     db.session.commit()
     return jsonify({'grant': {**g.to_dict(), 'label': _describe_scope(g)}}), 201
 
@@ -285,6 +294,9 @@ def delete_grant(actor, grant_id):
     target = db.session.get(User, g.user_id)
     if not target or not perm.can_manage_user(actor, target):
         return jsonify({'error': 'No permission to manage this user'}), 403
+    log_activity(actor.id, None, None, 'access_revoked',
+                 f'revoked {target.display_name}\'s access to {_describe_scope(g)}',
+                 company_id=target.company_id)
     db.session.delete(g)
     db.session.commit()
     return jsonify({'ok': True})
@@ -344,9 +356,38 @@ def delete_role(user, role_id):
         return jsonify({'error': 'Only super admins can delete roles'}), 403
     r = Role.query.get_or_404(role_id)
     User.query.filter_by(custom_role_id=r.id).update({'custom_role_id': None})
+    log_activity(user.id, None, None, 'role_deleted', f'deleted role "{r.name}"')
     db.session.delete(r)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ---- Audit log ----
+
+AUDIT_ACTIONS = ('board_deleted', 'item_deleted', 'group_deleted', 'column_deleted',
+                 'company_deleted', 'department_deleted', 'role_deleted',
+                 'user_created', 'user_deactivated', 'user_activated', 'user_role_changed',
+                 'access_granted', 'access_revoked')
+
+
+@bp.get('/audit')
+@login_required
+def audit(user):
+    """Deletions and admin actions, scoped to what the viewer administers."""
+    if not (user.role in ('super_admin', 'admin', 'company_admin')
+            or perm.has_cap(user, perm.CAP_USERS)):
+        return jsonify({'error': 'No permission'}), 403
+    from ..models import Activity
+    q = Activity.query.filter(Activity.action.in_(AUDIT_ACTIONS))
+    if not perm.is_super(user):
+        if user.role == 'admin':
+            managed = perm.managed_company_ids(user)
+            q = q.filter(Activity.company_id.in_(managed) if managed else db.false())
+        else:
+            q = q.filter(Activity.company_id == user.company_id)
+    rows = q.order_by(Activity.created_at.desc()).limit(200).all()
+    users = {u.id: u.to_dict() for u in User.query.all()}
+    return jsonify({'audit': [a.to_dict() for a in rows], 'users': users})
 
 
 # ---- Notification rules ----
