@@ -11,6 +11,7 @@ import CompanyPage from './views/CompanyPage'
 import DepartmentPage from './views/DepartmentPage'
 import { DepartmentsDirectory, ItemsDirectory } from './views/Directory'
 import Settings from './views/Settings'
+import CompaniesDirectory from './views/CompaniesDirectory'
 import ItemPanel from './components/ItemPanel'
 
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
           {route.page === 'jobs' && <ItemsDirectory kind="jobs" key="jobs" />}
           {route.page === 'tasks' && <ItemsDirectory kind="tasks" key="tasks" />}
           {route.page === 'settings' && <Settings />}
+          {route.page === 'companies' && <CompaniesDirectory />}
         </div>
       </div>
       {panelItemId && <ItemPanel itemId={panelItemId} />}

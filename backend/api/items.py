@@ -35,10 +35,12 @@ def create_item(user, board_id):
             return jsonify({'error': 'Parent item not found'}), 404
         if parent.parent_id:
             return jsonify({'error': 'Sub-tasks cannot have their own sub-tasks'}), 400
-        # anyone who can see a job may add sub-tasks to it
+        # anyone who can see a job (and may create) can add sub-tasks to it
         if not perm.can_view_item(user, parent):
             return jsonify({'error': 'No access to this item'}), 403
-    elif not perm.can_edit_board(user, board):
+        if not perm.has_cap(user, perm.CAP_CREATE):
+            return jsonify({'error': 'Your role cannot create jobs'}), 403
+    elif not (perm.board_access(user, board) == 'full' and perm.has_cap(user, perm.CAP_CREATE)):
         return jsonify({'error': 'No permission to add items to this board'}), 403
     group = None
     if parent is not None:
@@ -73,6 +75,8 @@ def update_item(user, item_id):
     item = Item.query.get_or_404(item_id)
     if not perm.can_view_item(user, item):
         return jsonify({'error': 'No access to this item'}), 403
+    if not perm.has_cap(user, perm.CAP_EDIT):
+        return jsonify({'error': 'Your role cannot edit jobs'}), 403
     data = request.json or {}
     if 'name' in data and data['name'].strip():
         old = item.name
@@ -154,6 +158,8 @@ def set_value(user, item_id, column_id):
     item = Item.query.get_or_404(item_id)
     if not perm.can_view_item(user, item):
         return jsonify({'error': 'No access to this item'}), 403
+    if not perm.has_cap(user, perm.CAP_EDIT):
+        return jsonify({'error': 'Your role cannot edit jobs'}), 403
     col = BoardColumn.query.get_or_404(column_id)
     if col.board_id != item.board_id:
         return jsonify({'error': 'Column does not belong to this board'}), 400
@@ -275,6 +281,8 @@ def create_update(user, item_id):
     item = Item.query.get_or_404(item_id)
     if not perm.can_view_item(user, item):
         return jsonify({'error': 'No access to this item'}), 403
+    if not perm.has_cap(user, perm.CAP_EDIT):
+        return jsonify({'error': 'Your role cannot edit jobs'}), 403
     body = ((request.json or {}).get('body') or '').strip()
     if not body:
         return jsonify({'error': 'Update text is required'}), 400
@@ -337,6 +345,8 @@ def upload_file(user, item_id):
     item = Item.query.get_or_404(item_id)
     if not perm.can_view_item(user, item):
         return jsonify({'error': 'No access to this item'}), 403
+    if not perm.has_cap(user, perm.CAP_EDIT):
+        return jsonify({'error': 'Your role cannot edit jobs'}), 403
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     f = request.files['file']

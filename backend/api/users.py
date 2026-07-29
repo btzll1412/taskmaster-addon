@@ -19,9 +19,9 @@ def _resolve_role(actor, company_id, role, custom_role_id):
         r = db.session.get(Role, custom_role_id)
         if not r:
             return 'Custom role not found'
-        if (r.company_id or None) != (company_id or None):
-            return 'That role belongs to a different company'
-        return (r.level, r.id)
+        # universal roles: base level derives from the role's capabilities
+        base = 'member' if r.permission_list() else 'viewer'
+        return (base, r.id)
     if company_id:
         if role not in COMPANY_LEVELS:
             return 'Company users can be: company admin, member, or viewer'
@@ -51,7 +51,8 @@ def list_users(user):
 @bp.post('')
 @login_required
 def create_user(actor):
-    if actor.role not in ('super_admin', 'admin', 'company_admin'):
+    if not (actor.role in ('super_admin', 'admin', 'company_admin')
+            or perm.has_cap(actor, perm.CAP_USERS)):
         return jsonify({'error': 'No permission to create users'}), 403
     data = request.json or {}
     username = (data.get('username') or '').strip().lower()

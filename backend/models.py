@@ -289,20 +289,38 @@ class Notification(db.Model):
 
 
 class Role(db.Model):
-    """Named role mapping to a base permission level. company_id null = IT staff role."""
+    """Universal named role carrying a set of permission capabilities."""
     __tablename__ = 'roles'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
-    # base level this role grants: admin | company_admin | member | viewer
-    level = db.Column(db.String(20), nullable=False, default='member')
-    company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='CASCADE'))
+    level = db.Column(db.String(20), nullable=False, default='member')  # legacy
+    permissions = db.Column(db.Text, default='[]')  # list of capability keys
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='CASCADE'))  # legacy
     created_at = db.Column(db.DateTime, default=utcnow)
+
+    def permission_list(self):
+        try:
+            perms = json.loads(self.permissions or '[]')
+        except ValueError:
+            perms = []
+        if perms:
+            return perms
+        # roles created before capabilities existed fall back to their level
+        legacy = {
+            'admin': ['create_jobs', 'edit_jobs', 'manage_boards', 'manage_users',
+                      'manage_access', 'manage_company'],
+            'company_admin': ['create_jobs', 'edit_jobs', 'manage_boards', 'manage_users',
+                              'manage_access', 'manage_company'],
+            'member': ['create_jobs', 'edit_jobs', 'manage_boards'],
+            'viewer': [],
+        }
+        return legacy.get(self.level, [])
 
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
-            'level': self.level,
+            'permissions': self.permission_list(),
             'company_id': self.company_id,
         }
 

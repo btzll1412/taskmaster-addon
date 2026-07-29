@@ -21,9 +21,14 @@ export default function Sidebar() {
     sidebarMobile, toggleSidebarMobile } = useStore()
   const [newBoardDept, setNewBoardDept] = useState(null)
   const [newDeptCompany, setNewDeptCompany] = useState(null)
-  const [showNewCompany, setShowNewCompany] = useState(false)
   const [closedCompanies, toggleCompany] = usePersistedSet('tm-closed-companies')
   const [closedDepts, toggleDept] = usePersistedSet('tm-closed-depts')
+  const [companiesOpen, setCompaniesOpen] = useState(localStorage.getItem('tm-companies-open') !== '0')
+  function toggleCompaniesSection() {
+    const next = !companiesOpen
+    setCompaniesOpen(next)
+    localStorage.setItem('tm-companies-open', next ? '1' : '0')
+  }
 
   const canManage = (companyId) =>
     user.role === 'super_admin' ||
@@ -47,10 +52,17 @@ export default function Sidebar() {
             onClick={() => navigate({ page: 'mywork' })}>
             <span className="nav-icon">🗂️</span>My Work
           </button>
+          <div className={`nav-item companies-nav ${route.page === 'companies' ? 'active' : ''}`}>
+            <span className="nav-icon">🏛️</span>
+            <span className="companies-nav-label" onClick={() => navigate({ page: 'companies' })}>Companies</span>
+            <button className="tree-chevron companies-chevron" onClick={toggleCompaniesSection}>
+              {companiesOpen ? '▾' : '▸'}
+            </button>
+          </div>
         </nav>
 
         <div className="sidebar-section">
-          {workspace.companies.map(c => (
+          {companiesOpen && workspace.companies.map(c => (
             <div key={c.id} className="tree-company">
               <div className="tree-row tree-company-row">
                 <button className="tree-chevron" onClick={() => toggleCompany(c.id)}>
@@ -91,18 +103,12 @@ export default function Sidebar() {
             </div>
           ))}
 
-          {workspace.companies.length === 0 && (
+          {companiesOpen && workspace.companies.length === 0 && (
             <div className="sidebar-empty">
               {workspace.can_create_companies
-                ? 'Create your first company to get started.'
+                ? 'No companies yet — add one from the Companies page.'
                 : 'Nothing shared with you yet.'}
             </div>
-          )}
-
-          {workspace.can_create_companies && (
-            <button className="nav-item nav-muted" onClick={() => setShowNewCompany(true)}>
-              <span className="nav-icon">＋</span>New company
-            </button>
           )}
         </div>
 
@@ -119,14 +125,6 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {showNewCompany && (
-          <NameModal title="Create company" placeholder="Company name"
-            onClose={() => setShowNewCompany(false)}
-            onSubmit={async (name) => {
-              await api.post('/api/companies', { name })
-              setShowNewCompany(false); refreshBoards()
-            }} showToast={showToast} />
-        )}
         {newDeptCompany && (
           <NameModal title={`New department — ${newDeptCompany.name}`} placeholder="Department name"
             onClose={() => setNewDeptCompany(null)}

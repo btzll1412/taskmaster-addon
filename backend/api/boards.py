@@ -19,7 +19,7 @@ bp = Blueprint('boards', __name__, url_prefix='/api')
 def _board_or_403(user, board_id, need_edit=False):
     board = Board.query.get_or_404(board_id)
     access = perm.board_access(user, board)
-    if access is None or (need_edit and access != 'full'):
+    if access is None or (need_edit and not perm.can_edit_board(user, board)):
         return board, None
     return board, access
 
@@ -39,10 +39,12 @@ def list_boards(user):
 
 
 def _can_create_in_company(user, company_id, dept_id=None):
-    return (perm.is_super(user)
-            or perm.can_manage_company(user, company_id)
-            or any(g.scope_type == 'company' and g.scope_id == company_id
-                   for g in perm.user_grants(user))
+    if perm.is_super(user) or perm.can_manage_company(user, company_id):
+        return True
+    if not perm.has_cap(user, perm.CAP_BOARDS):
+        return False
+    return (any(g.scope_type in ('all', 'company') and (g.scope_type == 'all' or g.scope_id == company_id)
+                for g in perm.user_grants(user))
             or (dept_id and any(g.scope_type == 'department' and g.scope_id == dept_id
                                 for g in perm.user_grants(user))))
 
