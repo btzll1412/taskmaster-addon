@@ -73,8 +73,16 @@ def my_work(user):
         cols = (BoardColumn.query.filter_by(board_id=b_id)
                 .order_by(BoardColumn.position).all())
         columns[str(b_id)] = [c.to_dict() for c in cols]
+    parent_ids = {i.parent_id for i in items if i.parent_id}
+    parent_names = ({p.id: p.name for p in Item.query.filter(Item.id.in_(parent_ids)).all()}
+                    if parent_ids else {})
+    out_items = []
+    for i in items:
+        d = i.to_dict(values=all_values.get(i.id, {}))
+        d['parent_name'] = parent_names.get(i.parent_id)
+        out_items.append(d)
     return jsonify({
-        'items': [i.to_dict(values=all_values.get(i.id, {})) for i in items],
+        'items': out_items,
         'boards': boards,
         'groups': groups,
         'columns': columns,

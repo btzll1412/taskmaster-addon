@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import Cell from './Cell'
-import { Popover } from './ui'
+import { OverlayPopover } from './ui'
 
 const COLUMN_TYPES = [
   { type: 'status', label: 'Status', icon: '🟢' },
@@ -228,12 +228,13 @@ function ItemName({ item, act }) {
 
 function ItemMenu({ item, groups, act, canEdit, isSub }) {
   const [open, setOpen] = useState(false)
+  const anchor = useRef(null)
   const others = canEdit && !isSub ? groups.filter(g => g.id !== item.group_id) : []
   return (
-    <div className="item-menu">
+    <div className="item-menu" ref={anchor}>
       <button className="icon-btn row-menu-btn" onClick={() => setOpen(true)}>⋯</button>
       {open && (
-        <Popover onClose={() => setOpen(false)} width={200}>
+        <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={210}>
           {others.map(g => (
             <button key={g.id} className="menu-item"
               onClick={() => { setOpen(false); act(api.put(`/api/items/${item.id}`, { group_id: g.id })) }}>
@@ -245,7 +246,7 @@ function ItemMenu({ item, groups, act, canEdit, isSub }) {
             onClick={() => { setOpen(false); if (confirm(`Delete "${item.name}"?`)) act(api.del(`/api/items/${item.id}`)) }}>
             🗑️ Delete {isSub ? 'sub-task' : 'item'}
           </button>
-        </Popover>
+        </OverlayPopover>
       )}
     </div>
   )
@@ -254,9 +255,10 @@ function ItemMenu({ item, groups, act, canEdit, isSub }) {
 function ColumnHeader({ col, act, canEdit }) {
   const [menu, setMenu] = useState(false)
   const [renaming, setRenaming] = useState(false)
+  const anchor = useRef(null)
   return (
     <th style={{ width: col.width, minWidth: col.width }}>
-      <div className="col-head">
+      <div className="col-head" ref={anchor}>
         {renaming && canEdit ? (
           <input autoFocus defaultValue={col.title} className="col-rename"
             onBlur={e => { setRenaming(false); const v = e.target.value.trim(); if (v && v !== col.title) act(api.put(`/api/columns/${col.id}`, { title: v })) }}
@@ -266,13 +268,13 @@ function ColumnHeader({ col, act, canEdit }) {
         )}
         {canEdit && <button className="col-menu-btn" onClick={() => setMenu(true)}>⋯</button>}
         {menu && (
-          <Popover onClose={() => setMenu(false)} width={180}>
+          <OverlayPopover anchorRef={anchor} onClose={() => setMenu(false)} width={190}>
             <button className="menu-item" onClick={() => { setMenu(false); setRenaming(true) }}>✏️ Rename</button>
             <button className="menu-item menu-danger"
               onClick={() => { setMenu(false); if (confirm(`Delete column "${col.title}" and all its values?`)) act(api.del(`/api/columns/${col.id}`)) }}>
               🗑️ Delete column
             </button>
-          </Popover>
+          </OverlayPopover>
         )}
       </div>
     </th>
@@ -281,18 +283,19 @@ function ColumnHeader({ col, act, canEdit }) {
 
 function AddColumnButton({ board, act }) {
   const [open, setOpen] = useState(false)
+  const anchor = useRef(null)
   return (
-    <div className="add-col">
+    <div className="add-col" ref={anchor}>
       <button className="icon-btn" title="Add column" onClick={() => setOpen(true)}>＋</button>
       {open && (
-        <Popover onClose={() => setOpen(false)} align="right" width={200}>
+        <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={210}>
           {COLUMN_TYPES.map(ct => (
             <button key={ct.type} className="menu-item"
               onClick={() => { setOpen(false); act(api.post(`/api/boards/${board.id}/columns`, { type: ct.type, title: ct.label === 'Dropdown / Tags' ? 'Tags' : ct.label })) }}>
               {ct.icon} {ct.label}
             </button>
           ))}
-        </Popover>
+        </OverlayPopover>
       )}
     </div>
   )
@@ -300,12 +303,13 @@ function AddColumnButton({ board, act }) {
 
 function GroupMenu({ group, act }) {
   const [open, setOpen] = useState(false)
+  const anchor = useRef(null)
   const colors = ['#579bfc', '#00c875', '#a25ddc', '#fdab3d', '#e2445c', '#66ccff', '#ff642e']
   return (
-    <div className="group-menu">
+    <div className="group-menu" ref={anchor}>
       <button className="icon-btn" onClick={() => setOpen(true)}>⋯</button>
       {open && (
-        <Popover onClose={() => setOpen(false)} width={190}>
+        <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={200}>
           <div className="color-row">
             {colors.map(c => (
               <button key={c} className="color-dot" style={{ background: c }}
@@ -316,7 +320,7 @@ function GroupMenu({ group, act }) {
             onClick={() => { setOpen(false); if (confirm(`Delete group "${group.name}" and all its items?`)) act(api.del(`/api/groups/${group.id}`)) }}>
             🗑️ Delete group
           </button>
-        </Popover>
+        </OverlayPopover>
       )}
     </div>
   )
