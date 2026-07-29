@@ -33,12 +33,15 @@ def workspace(user):
                 continue
             dept_list.append({
                 **d.to_dict(),
+                'can_create_board': perm.can_create_board_in(user, c.id, d.id),
                 'boards': [{**b.to_dict(), 'access': access,
                             'items_count': item_counts.get(b.id, 0)}
                            for b, access in boards],
             })
         out.append({
             **c.to_dict(),
+            'can_manage': perm.can_manage_company(user, c.id),
+            'can_create_board': perm.can_create_board_in(user, c.id),
             'boards': [{**b.to_dict(), 'access': access,
                         'items_count': item_counts.get(b.id, 0)}
                        for b, access in direct],
@@ -84,12 +87,14 @@ def get_company(user, company_id):
         if not boards and not perm.can_manage_company(user, c.id) and not perm.is_super(user):
             continue
         dept_list.append({**d.to_dict(),
+                          'can_create_board': perm.can_create_board_in(user, c.id, d.id),
                           'boards': [{**b.to_dict(), 'access': a} for b, a in boards]})
     return jsonify({
         'company': c.to_dict(),
         'boards': [{**b.to_dict(), 'access': a} for b, a in direct],
         'departments': dept_list,
         'can_manage': perm.can_manage_company(user, c.id),
+        'can_create_board': perm.can_create_board_in(user, c.id),
     })
 
 
@@ -124,6 +129,7 @@ def get_department(user, dept_id):
         'company': c.to_dict(),
         'boards': [{**b.to_dict(), 'access': a} for b, a in boards],
         'can_manage': perm.can_manage_company(user, c.id),
+        'can_create_board': perm.can_create_board_in(user, c.id, d.id),
     })
 
 

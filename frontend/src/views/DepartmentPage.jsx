@@ -5,7 +5,7 @@ import { Modal } from '../components/ui'
 import { NewBoardForm } from './CompanyPage'
 
 export default function DepartmentPage() {
-  const { route, navigate, openBoard, refreshBoards, showToast } = useStore()
+  const { user, route, navigate, openBoard, refreshBoards, showToast } = useStore()
   const [data, setData] = useState(null)
   const [newBoard, setNewBoard] = useState(false)
 
@@ -16,11 +16,14 @@ export default function DepartmentPage() {
   useEffect(() => { load() }, [route.deptId])
 
   if (!data) return <div className="muted page-loading">Loading…</div>
-  const { department, company, boards, can_manage } = data
+  const { department, company, boards, can_manage, can_create_board } = data
+  const cap = (c) => (user.capabilities || []).includes(c)
+  const canAddJob = cap('create_jobs') &&
+    (boards.some(b => b.access === 'full' && !b.archived) || can_create_board)
 
   async function quickAddJob() {
     try {
-      let board = boards[0]
+      let board = boards.find(b => b.access === 'full' && !b.archived)
       if (!board) {
         const created = await api.post(`/api/departments/${department.id}/boards`, { name: 'Jobs', icon: '🧰' })
         board = created.board
@@ -42,8 +45,8 @@ export default function DepartmentPage() {
       <div className="entity-head">
         <h2>{department.icon} {department.name}</h2>
         <div className="entity-actions">
-          {can_manage && <button className="btn btn-secondary" onClick={() => setNewBoard(true)}>＋ Job board</button>}
-          <button className="btn btn-primary" onClick={quickAddJob}>＋ Add job</button>
+          {can_create_board && <button className="btn btn-secondary" onClick={() => setNewBoard(true)}>＋ Job board</button>}
+          {canAddJob && <button className="btn btn-primary" onClick={quickAddJob}>＋ Add job</button>}
           {can_manage && (
             <button className="btn btn-danger" title="Delete this department (boards must be removed first)"
               onClick={async () => {
@@ -68,13 +71,13 @@ export default function DepartmentPage() {
               {b.access === 'partial' && <span className="muted">🔒 limited</span>}
             </button>
           ))}
-          {can_manage && (
+          {can_create_board && (
             <button className="board-card board-card-add" onClick={() => setNewBoard(true)}>
               <span className="board-card-icon">＋</span>
               <span className="board-card-name">New job board</span>
             </button>
           )}
-          {boards.length === 0 && !can_manage && <span className="muted">No boards shared with you here.</span>}
+          {boards.length === 0 && !can_create_board && <span className="muted">No boards shared with you here.</span>}
         </div>
       </section>
 

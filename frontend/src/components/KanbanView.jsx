@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { AvatarStack, fmtDate, dueClass } from './ui'
 
 /** Kanban view: lanes come from the labels of a status-type column. */
-export default function KanbanView({ items, canEdit, usersFor }) {
+export default function KanbanView({ items, canEdit, canEditItems, usersFor }) {
   items = items.filter(i => !i.parent_id)
   const { boardData, users, refreshBoard, openItem, showToast } = useStore()
   const { board, columns } = boardData
@@ -75,6 +75,7 @@ export default function KanbanView({ items, canEdit, usersFor }) {
               <div className="lane-cards">
                 {laneList.map(item => (
                   <KanbanCard key={item.id} item={item} users={usersFor ? usersFor(item) : users} laneColor={lane.color}
+                    draggable={!!canEditItems}
                     peopleCol={peopleCol} dateCol={dateCol} prioCol={prioCol}
                     onOpen={() => openItem(item.id)} />
                 ))}
@@ -87,7 +88,7 @@ export default function KanbanView({ items, canEdit, usersFor }) {
   )
 }
 
-function KanbanCard({ item, users, laneColor, peopleCol, dateCol, prioCol, onOpen }) {
+function KanbanCard({ item, users, laneColor, draggable, peopleCol, dateCol, prioCol, onOpen }) {
   const people = peopleCol ? (item.values[String(peopleCol.id)]?.user_ids || []) : []
   const assignees = users.filter(u => people.includes(u.id))
   const date = dateCol ? item.values[String(dateCol.id)]?.date : null
@@ -96,7 +97,7 @@ function KanbanCard({ item, users, laneColor, peopleCol, dateCol, prioCol, onOpe
     : null
 
   return (
-    <div className="kanban-card" style={{ '--lane-color': laneColor }} draggable
+    <div className="kanban-card" style={{ '--lane-color': laneColor }} draggable={draggable}
       onDragStart={e => e.dataTransfer.setData('text/item-id', String(item.id))}
       onClick={onOpen}>
       <div className="card-name">{item.name}</div>

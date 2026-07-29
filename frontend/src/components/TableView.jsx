@@ -15,7 +15,7 @@ const COLUMN_TYPES = [
   { type: 'checkbox', label: 'Checkbox', icon: '☑️' },
 ]
 
-export default function TableView({ items, canEdit, usersFor }) {
+export default function TableView({ items, canEdit, canCreate, canEditItems, usersFor }) {
   const { boardData, users, refreshBoard, openItem, showToast } = useStore()
   const { board, groups, columns } = boardData
 
@@ -33,7 +33,7 @@ export default function TableView({ items, canEdit, usersFor }) {
     <div className="table-view">
       {groups.map(group => (
         <GroupTable key={group.id} group={group} columns={columns} users={users}
-          usersFor={usersFor}
+          usersFor={usersFor} canCreate={canCreate} canEditItems={canEditItems}
           items={items.filter(i => i.group_id === group.id)}
           groups={groups} board={board} canEdit={canEdit}
           act={act} setValue={setValue} updateColumnSettings={updateColumnSettings}
@@ -50,7 +50,7 @@ export default function TableView({ items, canEdit, usersFor }) {
 }
 
 function GroupTable({ group, groups, columns, items, users, usersFor, board, canEdit,
-  act, setValue, updateColumnSettings, openItem }) {
+  canCreate, canEditItems, act, setValue, updateColumnSettings, openItem }) {
   const [newItem, setNewItem] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [expanded, setExpanded] = useState(() => new Set())
@@ -114,7 +114,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
               {topItems.map(item => (
                 <React.Fragment key={item.id}>
                   <ItemRow item={item} columns={columns} users={usersFor ? usersFor(item) : users} groups={groups}
-                    canEdit={canEdit} act={act} setValue={setValue}
+                    canEdit={canEdit} canEditItems={canEditItems} act={act} setValue={setValue}
                     updateColumnSettings={updateColumnSettings} openItem={openItem}
                     subCount={(subsByParent[item.id] || []).length}
                     isExpanded={expanded.has(item.id)}
@@ -123,20 +123,23 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
                     <>
                       {(subsByParent[item.id] || []).map(sub => (
                         <ItemRow key={sub.id} item={sub} columns={columns} users={usersFor ? usersFor(sub) : users}
-                          groups={groups} canEdit={canEdit} act={act} setValue={setValue}
+                          groups={groups} canEdit={canEdit} canEditItems={canEditItems}
+                          act={act} setValue={setValue}
                           updateColumnSettings={updateColumnSettings} openItem={openItem}
                           isSub />
                       ))}
-                      <tr className="add-item-row sub-row">
-                        <td colSpan={colSpan}>
-                          <AddSubItem board={board} parent={item} act={act} />
-                        </td>
-                      </tr>
+                      {canCreate && (
+                        <tr className="add-item-row sub-row">
+                          <td colSpan={colSpan}>
+                            <AddSubItem board={board} parent={item} act={act} />
+                          </td>
+                        </tr>
+                      )}
                     </>
                   )}
                 </React.Fragment>
               ))}
-              {canEdit && (
+              {canCreate && (
                 <tr className="add-item-row">
                   <td className="col-name" colSpan={colSpan}>
                     <form onSubmit={addItem}>
@@ -166,7 +169,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
   )
 }
 
-function ItemRow({ item, columns, users, groups, canEdit, act, setValue,
+function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, setValue,
   updateColumnSettings, openItem, isSub, subCount = 0, isExpanded, onToggleExpand }) {
   return (
     <tr className={`item-row ${isSub ? 'sub-item-row' : ''}`}>
@@ -190,6 +193,7 @@ function ItemRow({ item, columns, users, groups, canEdit, act, setValue,
       {columns.map(col => (
         <td key={col.id} style={{ width: col.width, minWidth: col.width }}>
           <Cell column={col} value={item.values[String(col.id)]} users={users}
+            disabled={!canEditItems}
             onChange={v => setValue(item, col, v)}
             onUpdateColumn={updateColumnSettings ? (s => updateColumnSettings(col, s)) : undefined} />
         </td>

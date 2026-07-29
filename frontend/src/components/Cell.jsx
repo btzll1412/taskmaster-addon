@@ -8,8 +8,10 @@ const LABEL_COLORS = ['#00c875', '#fdab3d', '#e2445c', '#579bfc', '#a25ddc', '#6
  * value formats: status/priority {id} · text {text} · number {number} · date {date}
  * people {user_ids:[]} · dropdown {ids:[]} · checkbox {checked}
  */
-export default function Cell({ column, value, users, onChange, onUpdateColumn, compact }) {
-  const [editing, setEditing] = useState(false)
+export default function Cell({ column, value, users, onChange, onUpdateColumn, compact, disabled }) {
+  const [editing, setEditingRaw] = useState(false)
+  const setEditing = disabled ? () => {} : setEditingRaw
+  if (disabled) onChange = () => {}
   const t = column.type
 
   if (t === 'status' || t === 'priority') {

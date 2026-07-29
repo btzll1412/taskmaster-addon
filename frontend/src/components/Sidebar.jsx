@@ -30,10 +30,6 @@ export default function Sidebar() {
     localStorage.setItem('tm-companies-open', next ? '1' : '0')
   }
 
-  const canManage = (companyId) =>
-    user.role === 'super_admin' ||
-    (user.role === 'company_admin' && user.company_id === companyId)
-
   return (
     <>
       {sidebarMobile && <div className="sidebar-backdrop" onClick={toggleSidebarMobile} />}
@@ -87,8 +83,10 @@ export default function Sidebar() {
                     </button>
                     <span className="tree-label" title={d.name}
                       onClick={() => navigate({ page: 'department', deptId: d.id })}>{d.icon} {d.name}</span>
-                    <button className="icon-btn tree-add" title="New board"
-                      onClick={() => setNewBoardDept(d)}>＋</button>
+                    {d.can_create_board && (
+                      <button className="icon-btn tree-add" title="New board"
+                        onClick={() => setNewBoardDept(d)}>＋</button>
+                    )}
                   </div>
                   {!closedDepts.has(d.id) && d.boards.filter(b => !b.archived).map(b => (
                     <BoardNode key={b.id} board={b}

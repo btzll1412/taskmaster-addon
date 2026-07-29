@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from .. import permissions as perm
 from ..auth import current_user, login_required
 from ..db import db
 from ..models import User
@@ -12,13 +13,19 @@ def _setup_required():
     return User.query.filter(User.password_hash.isnot(None)).first() is None
 
 
+def _user_payload(user):
+    d = user.to_dict(include_private=True)
+    d['capabilities'] = sorted(perm.caps(user))
+    return d
+
+
 @bp.get('/status')
 def status():
     user = current_user()
     return jsonify({
         'setup_required': _setup_required(),
         'authenticated': user is not None,
-        'user': user.to_dict(include_private=True) if user else None,
+        'user': _user_payload(user) if user else None,
     })
 
 
@@ -47,7 +54,7 @@ def setup():
 
     session.permanent = True
     session['user_id'] = user.id
-    return jsonify({'user': user.to_dict(include_private=True)})
+    return jsonify({'user': _user_payload(user)})
 
 
 @bp.post('/login')
@@ -61,7 +68,7 @@ def login():
         return jsonify({'error': 'Invalid username or password'}), 401
     session.permanent = True
     session['user_id'] = user.id
-    return jsonify({'user': user.to_dict(include_private=True)})
+    return jsonify({'user': _user_payload(user)})
 
 
 @bp.post('/logout')
@@ -98,4 +105,4 @@ def update_profile(user):
     if 'hide_done' in data:
         user.hide_done = bool(data['hide_done'])
     db.session.commit()
-    return jsonify({'user': user.to_dict(include_private=True)})
+    return jsonify({'user': _user_payload(user)})
