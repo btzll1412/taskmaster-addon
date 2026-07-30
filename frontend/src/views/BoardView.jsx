@@ -1,14 +1,14 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import TableView from '../components/TableView'
 import KanbanView from '../components/KanbanView'
-import RulesModal from '../components/RulesModal'
+import NewJobModal from '../components/NewJobModal'
 import { Avatar, Popover, Spinner } from '../components/ui'
 
 export default function BoardView() {
   const { boardData, boardLoading, route, users, workspace, refreshBoard, refreshBoards, navigate, showToast } = useStore()
-  const [showRules, setShowRules] = useState(false)
+  const [showNewJob, setShowNewJob] = useState(false)
   const boardId = route.boardId
   const [view, setView] = useState(() => localStorage.getItem(`tm-view-${boardId}`) || 'table')
   const [search, setSearch] = useState('')
@@ -71,6 +71,14 @@ export default function BoardView() {
     const keptTops = new Set(items.filter(i => !i.parent_id && keep(i)).map(i => i.id))
     return items.filter(i => i.parent_id ? keptTops.has(i.parent_id) : keptTops.has(i.id))
   }, [items, search, personFilter, statusFilter, columns, user.hide_done])
+
+  // "+ Add job" from a company/department page lands here asking for the popup
+  useEffect(() => {
+    if (ready && route.newJob && fullAccess && cap('create_jobs')) {
+      setShowNewJob(true)
+      navigate({ page: 'board', boardId }, { fromHistory: true })
+    }
+  }, [ready, route.newJob])
 
   if (!ready) {
     return <div className="board-loading"><Spinner /></div>
@@ -148,14 +156,7 @@ export default function BoardView() {
         </div>
 
         <div className="board-toolbar">
-          {canCreate && <button className="btn btn-primary" onClick={async () => {
-            try {
-              await api.post(`/api/boards/${board.id}/items`, { name: 'New item' })
-              await refreshBoard()
-            } catch (e) { showToast(e.message) }
-          }}>New item</button>}
-          {canEdit && <button className="btn btn-secondary" title="Notify people automatically on status changes"
-            onClick={() => setShowRules(true)}>🔔 Automations</button>}
+          {canCreate && <button className="btn btn-primary" onClick={() => setShowNewJob(true)}>＋ New job</button>}
           <input className="board-search" placeholder="🔍 Search this board"
             value={search} onChange={e => setSearch(e.target.value)} />
           <div className="person-filter">
@@ -207,7 +208,12 @@ export default function BoardView() {
             canEditItems={canEditItems} usersFor={usersFor} />
         : <KanbanView items={filtered} canEdit={canEdit} canEditItems={canEditItems} usersFor={usersFor} />}
 
-      {showRules && <RulesModal board={board} columns={columns} onClose={() => setShowRules(false)} />}
+      {showNewJob && (
+        <NewJobModal board={board} assignableUsers={activeUsers}
+          onClose={() => setShowNewJob(false)}
+          onCreated={async () => { setShowNewJob(false); await refreshBoard() }}
+          showToast={showToast} />
+      )}
     </div>
   )
 }

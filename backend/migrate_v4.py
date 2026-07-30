@@ -7,10 +7,15 @@
 - Members keep seeing the boards that existed before permissions arrived
   (board-level grants), so nothing disappears on upgrade.
 """
+import json
+
 from sqlalchemy import inspect, text
 
 from .db import db
-from .models import AccessGrant, Board, Company, Department, User
+from .models import (AUDIT_ACTION_LIST, AccessGrant, Activity, AutomationRule,
+                     Board, BoardColumn, BoardGroup, Company, Department,
+                     FileAsset, Item, ItemUpdate, ItemValue, NotificationRule,
+                     User)
 
 
 def _ensure_column(table, column, ddl):
@@ -85,3 +90,123 @@ def migrate_v4_data():
                         user_id=m.id, scope_type='board', scope_id=b.id))
         db.session.commit()
         print(f'TaskMaster: placed {len(orphans)} board(s) into "{company.name} / {dept.name}"')
+
+    _cleanup_orphans()
+    _dedupe_default_columns()
+    _migrate_board_rules()
+
+
+def _cleanup_orphans():
+    """Earlier versions deleted boards without cascading, leaving items/groups/
+    columns/values behind — they inflated every count and, because SQLite
+    reuses row ids, could attach old data to brand-new rows. Sweep them out."""
+    removed = 0
+    board_ids = {b.id for b in Board.query.with_entities(Board.id)}
+
+    def sweep(query):
+        nonlocal removed
+        n = query.delete(synchronize_session=False)
+        removed += n
+        return n
+
+    sweep(BoardGroup.query.filter(~BoardGroup.board_id.in_(board_ids)))
+    sweep(BoardColumn.query.filter(~BoardColumn.board_id.in_(board_ids)))
+    sweep(Item.query.filter(~Item.board_id.in_(board_ids)))
+    # sub-tasks whose parent job is gone
+    item_ids = {i.id for i in Item.query.with_entities(Item.id)}
+    sweep(Item.query.filter(Item.parent_id.isnot(None), ~Item.parent_id.in_(item_ids)))
+
+    item_ids = {i.id for i in Item.query.with_entities(Item.id)}
+    col_ids = {c.id for c in BoardColumn.query.with_entities(BoardColumn.id)}
+    sweep(ItemValue.query.filter(~ItemValue.item_id.in_(item_ids)
+                                 | ~ItemValue.column_id.in_(col_ids)))
+    sweep(ItemUpdate.query.filter(~ItemUpdate.item_id.in_(item_ids)))
+    sweep(FileAsset.query.filter(~FileAsset.item_id.in_(item_ids)))
+    sweep(NotificationRule.query.filter(~NotificationRule.board_id.in_(board_ids)
+                                        | ~NotificationRule.column_id.in_(col_ids)))
+    # per-item work history of items that no longer exist (audit rows keep item_id NULL)
+    sweep(Activity.query.filter(Activity.item_id.isnot(None),
+                                ~Activity.item_id.in_(item_ids)))
+    # non-audit activity pointing at deleted boards; audit rows just detach
+    sweep(Activity.query.filter(Activity.board_id.isnot(None),
+                                ~Activity.board_id.in_(board_ids),
+                                Activity.action.notin_(AUDIT_ACTION_LIST)))
+    Activity.query.filter(Activity.board_id.isnot(None),
+                          ~Activity.board_id.in_(board_ids)).update(
+        {'board_id': None}, synchronize_session=False)
+    # access grants whose target object is gone
+    dept_ids = {d.id for d in Department.query.with_entities(Department.id)}
+    company_ids = {c.id for c in Company.query.with_entities(Company.id)}
+    for scope, ids in (('board', board_ids), ('item', item_ids),
+                       ('department', dept_ids), ('company', company_ids)):
+        sweep(AccessGrant.query.filter(AccessGrant.scope_type == scope,
+                                       ~AccessGrant.scope_id.in_(ids)))
+    if removed:
+        db.session.commit()
+        print(f'TaskMaster: cleaned up {removed} orphaned row(s) from earlier deletions')
+
+
+def _dedupe_default_columns():
+    """Some boards ended up with doubled Status/Due date/Priority columns.
+    Keep the copy holding the data (values move over where possible)."""
+    removed = 0
+    for board in Board.query.all():
+        cols = (BoardColumn.query.filter_by(board_id=board.id)
+                .order_by(BoardColumn.position, BoardColumn.id).all())
+        by_key = {}
+        for c in cols:
+            by_key.setdefault((c.title.strip().lower(), c.type), []).append(c)
+        for dupes in by_key.values():
+            if len(dupes) < 2:
+                continue
+            counts = {c.id: ItemValue.query.filter_by(column_id=c.id).count() for c in dupes}
+            keeper = max(dupes, key=lambda c: (counts[c.id], -c.id))
+            for c in dupes:
+                if c.id == keeper.id:
+                    continue
+                # move values the keeper doesn't have; drop the rest
+                taken = {v.item_id for v in ItemValue.query.filter_by(column_id=keeper.id)}
+                for v in ItemValue.query.filter_by(column_id=c.id).all():
+                    if v.item_id in taken:
+                        db.session.delete(v)
+                    else:
+                        v.column_id = keeper.id
+                NotificationRule.query.filter_by(column_id=c.id).update(
+                    {'column_id': keeper.id}, synchronize_session=False)
+                db.session.delete(c)
+                removed += 1
+    if removed:
+        db.session.commit()
+        print(f'TaskMaster: removed {removed} duplicated column(s)')
+
+
+def _migrate_board_rules():
+    """Per-board notification rules move into the central automations system,
+    scoped to the board's company."""
+    rules = NotificationRule.query.all()
+    if not rules:
+        return
+    migrated = 0
+    for r in rules:
+        board = db.session.get(Board, r.board_id)
+        col = db.session.get(BoardColumn, r.column_id)
+        db.session.delete(r)
+        if board is None or col is None:
+            continue
+        from . import permissions as perm
+        company_id = perm.board_company_id(board)
+        label_text = None
+        if r.label_id:
+            labels = {l['id']: l['label'] for l in col.settings_dict().get('labels', [])}
+            label_text = labels.get(r.label_id)
+        db.session.add(AutomationRule(
+            company_id=company_id,
+            name=(f'{board.name}: notify when {col.title} becomes {label_text}'
+                  if label_text else f'{board.name}: notify on {col.title} change'),
+            label_text=label_text,
+            notify_user_ids=json.dumps(r.user_id_list()),
+            created_by=r.created_by,
+        ))
+        migrated += 1
+    db.session.commit()
+    print(f'TaskMaster: migrated {migrated} board notification rule(s) to central automations')

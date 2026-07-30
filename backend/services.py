@@ -1,10 +1,12 @@
 """Shared helpers: activity logging, notifications, board serialization, defaults."""
 import json
+import os
 
 from . import realtime
 from .db import db
-from .models import (Activity, Board, BoardColumn, BoardGroup, FileAsset, Item,
-                     ItemUpdate, ItemValue, Notification)
+from .models import (AccessGrant, Activity, Board, BoardColumn, BoardGroup,
+                     FileAsset, Item, ItemUpdate, ItemValue, Notification,
+                     NotificationRule)
 
 STATUS_PRESET = [
     {'id': 'l1', 'label': 'Not Started', 'color': '#c4c4c4'},
@@ -133,8 +135,111 @@ def serialize_board_full(board, visible_ids=None, access='full'):
     }
 
 
+def purge_item_rows(item_ids):
+    """Hard-delete everything hanging off a set of items: values, updates,
+    files (incl. on disk), per-item work activity, and single-job grants.
+    SQLite reuses row ids, so leftovers would attach to future items."""
+    if not item_ids:
+        return
+    from .config import UPLOAD_DIR
+    ItemValue.query.filter(ItemValue.item_id.in_(item_ids)).delete(synchronize_session=False)
+    ItemUpdate.query.filter(ItemUpdate.item_id.in_(item_ids)).delete(synchronize_session=False)
+    for f in FileAsset.query.filter(FileAsset.item_id.in_(item_ids)).all():
+        try:
+            os.remove(os.path.join(UPLOAD_DIR, f.filename))
+        except OSError:
+            pass
+        db.session.delete(f)
+    Activity.query.filter(Activity.item_id.in_(item_ids)).delete(synchronize_session=False)
+    AccessGrant.query.filter(AccessGrant.scope_type == 'item',
+                             AccessGrant.scope_id.in_(item_ids)).delete(synchronize_session=False)
+
+
+def purge_items(items):
+    """Delete items plus their sub-tasks and every dependent row."""
+    all_items = list(items)
+    ids = [i.id for i in all_items]
+    if ids:
+        subs = Item.query.filter(Item.parent_id.in_(ids),
+                                 Item.id.notin_(ids)).all()
+        all_items += subs
+        ids = [i.id for i in all_items]
+    purge_item_rows(ids)
+    for i in all_items:
+        db.session.delete(i)
+
+
+def purge_board(board):
+    """Delete a board and every dependent row. Audit entries about the board
+    (deletions, access changes) survive detached from it; work history goes."""
+    from .models import AUDIT_ACTION_LIST
+    purge_items(Item.query.filter_by(board_id=board.id).all())
+    NotificationRule.query.filter_by(board_id=board.id).delete(synchronize_session=False)
+    BoardColumn.query.filter_by(board_id=board.id).delete(synchronize_session=False)
+    BoardGroup.query.filter_by(board_id=board.id).delete(synchronize_session=False)
+    AccessGrant.query.filter_by(scope_type='board', scope_id=board.id).delete(synchronize_session=False)
+    Activity.query.filter(Activity.board_id == board.id,
+                          Activity.action.notin_(AUDIT_ACTION_LIST)).delete(synchronize_session=False)
+    Activity.query.filter_by(board_id=board.id).update({'board_id': None}, synchronize_session=False)
+    db.session.delete(board)
+
+
+def apply_template(user, board, item, template, log):
+    """Fill a fresh job from a template: field values matched to the board's
+    columns by type (+title when several share a type), plus its own copy of
+    the sub-task list. Unmatched fields are skipped silently."""
+    data = template.data_dict()
+    columns = BoardColumn.query.filter_by(board_id=board.id).order_by(BoardColumn.position).all()
+
+    def find_column(spec):
+        same_type = [c for c in columns if c.type == spec.get('type')]
+        for c in same_type:
+            if c.title.strip().lower() == (spec.get('title') or '').strip().lower():
+                return c
+        return same_type[0] if same_type else None
+
+    def value_for(col, spec):
+        if col.type in ('status', 'priority'):
+            wanted = (spec.get('label') or '').strip().lower()
+            for l in col.settings_dict().get('labels', []):
+                if l['label'].strip().lower() == wanted:
+                    return {'id': l['id']}
+            return None
+        if col.type == 'text' and spec.get('text'):
+            return {'text': spec['text']}
+        if col.type == 'number' and spec.get('number') is not None:
+            return {'number': spec['number']}
+        return None
+
+    for spec in data.get('values', []):
+        col = find_column(spec)
+        if col is None:
+            continue
+        value = value_for(col, spec)
+        if value is None:
+            continue
+        db.session.add(ItemValue(item_id=item.id, column_id=col.id,
+                                 value=json.dumps(value)))
+
+    position = 0
+    for sub in data.get('subtasks', []):
+        name = (sub.get('name') or '').strip()
+        if not name:
+            continue
+        position += 1
+        child = Item(board_id=board.id, group_id=item.group_id, name=name,
+                     parent_id=item.id, position=position, created_by=user.id)
+        db.session.add(child)
+    if log:
+        log_activity(user.id, board.id, item.id, 'item_created',
+                     f'created "{item.name}" from template "{template.name}"')
+
+
 def create_default_board_layout(board):
     """Give a fresh board monday-style defaults: two groups + core columns."""
+    if (BoardColumn.query.filter_by(board_id=board.id).count()
+            or BoardGroup.query.filter_by(board_id=board.id).count()):
+        return  # never double-up defaults on a board that already has a layout
     db.session.add(BoardGroup(board_id=board.id, name='To-Do', color='#579bfc', position=1))
     db.session.add(BoardGroup(board_id=board.id, name='Completed', color='#00c875', position=2))
     defaults = [

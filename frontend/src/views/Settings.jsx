@@ -10,16 +10,188 @@ const LEVEL_LABEL = {
 export default function Settings() {
   const { user, init, showToast, workspace } = useStore()
   const canRoles = ['super_admin', 'admin', 'company_admin'].includes(user.role)
+  const isAdmin = canRoles
+  const [tab, setTab] = useState('general')
 
   return (
     <div className="entity-page settings-page">
       <div className="entity-head"><h2>⚙️ Settings</h2></div>
 
-      <ProfileSection user={user} init={init} showToast={showToast} />
-      <PreferencesSection user={user} init={init} showToast={showToast} />
-      <PasswordSection showToast={showToast} />
-      <AppearanceSection />
-      {canRoles && <RolesSection user={user} workspace={workspace} showToast={showToast} />}
+      {isAdmin && (
+        <div className="view-tabs settings-tabs">
+          <button className={tab === 'general' ? 'active' : ''} onClick={() => setTab('general')}>
+            <span className="tab-icon">🧑</span> General
+          </button>
+          <button className={tab === 'automations' ? 'active' : ''} onClick={() => setTab('automations')}>
+            <span className="tab-icon">⚡</span> Automations
+          </button>
+          <button className={tab === 'roles' ? 'active' : ''} onClick={() => setTab('roles')}>
+            <span className="tab-icon">🎭</span> Roles
+          </button>
+        </div>
+      )}
+
+      {tab === 'general' && (
+        <>
+          <ProfileSection user={user} init={init} showToast={showToast} />
+          <PreferencesSection user={user} init={init} showToast={showToast} />
+          <PasswordSection showToast={showToast} />
+          <AppearanceSection />
+        </>
+      )}
+      {tab === 'automations' && isAdmin && <AutomationsSection user={user} showToast={showToast} />}
+      {tab === 'roles' && canRoles && <RolesSection user={user} workspace={workspace} showToast={showToast} />}
+    </div>
+  )
+}
+
+function AutomationsSection({ user, showToast }) {
+  const { users, workspace } = useStore()
+  const [data, setData] = useState(null)
+  const [showNew, setShowNew] = useState(false)
+  const isSuper = user.role === 'super_admin'
+  const myCompanyIds = user.role === 'company_admin'
+    ? [user.company_id]
+    : workspace.companies.map(c => c.id)
+
+  async function load() {
+    try { setData(await api.get('/api/automations')) }
+    catch (e) { showToast(e.message) }
+  }
+  useEffect(() => { load() }, [])
+
+  // is this rule ON for the viewer's world?
+  function isOn(r) {
+    if (!r.enabled) return false
+    if (r.company_id === null && !isSuper) {
+      return !r.disabled_company_ids.includes(user.company_id ?? myCompanyIds[0])
+    }
+    return true
+  }
+
+  async function toggle(r) {
+    try {
+      await api.put(`/api/automations/${r.id}`, { enabled: !isOn(r) })
+      await load()
+    } catch (e) { showToast(e.message) }
+  }
+
+  return (
+    <section className="settings-card">
+      <h3>⚡ Automations</h3>
+      <p className="muted">
+        Notify people automatically when a job's status changes — on every board.
+        {isSuper
+          ? ' Rules without a company apply to all companies; each company admin can still switch them off for their own company.'
+          : ' Global rules come from the system admin — you can switch them on or off for your company. Your own rules apply to your company only.'}
+      </p>
+
+      <div className="grants-list">
+        {data === null && <div className="muted">Loading…</div>}
+        {data?.automations.length === 0 && <div className="muted">No automations yet.</div>}
+        {data?.automations.map(r => (
+          <div key={r.id} className={`grant-row automation-row ${isOn(r) ? '' : 'automation-off'}`}>
+            <label className="switch" title={isOn(r) ? 'On — click to turn off' : 'Off — click to turn on'}>
+              <input type="checkbox" checked={isOn(r)} onChange={() => toggle(r)} />
+              <span className="switch-slider" />
+            </label>
+            <div className="automation-main">
+              <strong>{r.name || 'Automation'}</strong>
+              <span className="muted">
+                When status becomes {r.label_text ? `"${r.label_text}"` : 'anything'} → notify{' '}
+                {[
+                  ...r.notify_user_ids.map(id => data.users[String(id)]?.display_name || '?'),
+                  ...(r.notify_assignees ? ['people assigned to the job'] : []),
+                ].join(', ') || 'nobody'}
+              </span>
+            </div>
+            <span className={`role-tag ${r.company_id === null ? 'super_admin' : 'member'}`}>
+              {r.company_id === null ? '🌐 All companies' : data.company_names[String(r.company_id)] || 'Company'}
+            </span>
+            {(isSuper || (r.company_id !== null && myCompanyIds.includes(r.company_id))) && (
+              <button className="icon-btn" title="Delete automation" onClick={async () => {
+                if (!confirm(`Delete automation "${r.name}"?`)) return
+                try { await api.del(`/api/automations/${r.id}`); await load() } catch (e) { showToast(e.message) }
+              }}>🗑️</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {!showNew && <div><button className="btn btn-primary" onClick={() => setShowNew(true)}>＋ New automation</button></div>}
+      {showNew && (
+        <NewAutomationForm user={user} users={users} workspace={workspace} isSuper={isSuper}
+          onDone={() => { setShowNew(false); load() }} showToast={showToast} />
+      )}
+    </section>
+  )
+}
+
+function NewAutomationForm({ user, users, workspace, isSuper, onDone, showToast }) {
+  const [name, setName] = useState('')
+  const [label, setLabel] = useState('Done')
+  const [companyId, setCompanyId] = useState(isSuper ? '' : String(user.company_id || ''))
+  const [notifyAssignees, setNotifyAssignees] = useState(true)
+  const [userIds, setUserIds] = useState([])
+  const LABELS = ['Done', 'Working on it', 'Stuck', 'Not Started']
+
+  function toggleUser(id) {
+    setUserIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
+  }
+
+  async function save() {
+    try {
+      await api.post('/api/automations', {
+        name: name.trim(),
+        label_text: label === '__any__' ? '' : label,
+        company_id: companyId ? Number(companyId) : null,
+        notify_user_ids: userIds,
+        notify_assignees: notifyAssignees,
+      })
+      onDone()
+    } catch (e) { showToast(e.message) }
+  }
+
+  return (
+    <div className="form-col automation-form">
+      <h4>New automation</h4>
+      <input placeholder="Name (e.g. Tell the office when a job is done)" value={name}
+        onChange={e => setName(e.target.value)} />
+      <div className="form-row">
+        <div className="form-col-half">
+          <label>When status becomes</label>
+          <select value={label} onChange={e => setLabel(e.target.value)}>
+            {LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+            <option value="__any__">Any change</option>
+          </select>
+        </div>
+        {isSuper && (
+          <div className="form-col-half">
+            <label>Applies to</label>
+            <select value={companyId} onChange={e => setCompanyId(e.target.value)}>
+              <option value="">🌐 All companies</option>
+              {workspace.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+      <label className="radio-row">
+        <input type="checkbox" checked={notifyAssignees} onChange={e => setNotifyAssignees(e.target.checked)} />
+        <span>Notify the people assigned to the job</span>
+      </label>
+      <label>Also notify these people</label>
+      <div className="sites-grid">
+        {users.filter(u => u.is_active).map(u => (
+          <label key={u.id} className={`cap-option ${userIds.includes(u.id) ? 'selected' : ''}`}>
+            <input type="checkbox" checked={userIds.includes(u.id)} onChange={() => toggleUser(u.id)} />
+            <span>{u.display_name}</span>
+          </label>
+        ))}
+      </div>
+      <div className="form-row">
+        <button className="btn btn-primary" onClick={save}>Create automation</button>
+        <button className="btn btn-secondary" onClick={onDone}>Cancel</button>
+      </div>
     </div>
   )
 }

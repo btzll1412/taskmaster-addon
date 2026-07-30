@@ -54,9 +54,10 @@ export const useStore = create((set, get) => ({
     }
   },
 
-  navigate(route) {
+  navigate(route, { fromHistory } = {}) {
     set({ route, panelItemId: null, sidebarMobile: false })
     localStorage.setItem('tm-route', JSON.stringify(route))
+    if (!fromHistory) pushHistory({ route, panelItemId: null })
     if (route.page === 'board') get().openBoard(route.boardId, { keepRoute: true })
     if (route.page === 'home') get().refreshStats()
     if (route.page === 'mywork') get().refreshMyWork()
@@ -119,8 +120,14 @@ export const useStore = create((set, get) => ({
     set({ _toastTimer: timer })
   },
 
-  openItem(itemId) { set({ panelItemId: itemId }) },
-  closeItem() { set({ panelItemId: null }) },
+  openItem(itemId, { fromHistory } = {}) {
+    set({ panelItemId: itemId })
+    if (!fromHistory) pushHistory({ route: get().route, panelItemId: itemId })
+  },
+  closeItem({ fromHistory } = {}) {
+    set({ panelItemId: null })
+    if (!fromHistory) pushHistory({ route: get().route, panelItemId: null })
+  },
 
   async logout() {
     await api.post('/api/auth/logout')
@@ -128,6 +135,32 @@ export const useStore = create((set, get) => ({
     set({ user: null, boards: [], boardData: null, route: { page: 'home', boardId: null } })
   },
 }))
+
+// ---- Browser history: the back button navigates inside the app ----
+function pushHistory(state) {
+  try { window.history.pushState(state, '') } catch { /* ignore */ }
+}
+
+let historyConnected = false
+export function connectHistory() {
+  const st = useStore.getState()
+  // seed the current entry so the first "back" has a state to return to
+  try { window.history.replaceState({ route: st.route, panelItemId: st.panelItemId }, '') } catch { /* ignore */ }
+  if (historyConnected) return
+  historyConnected = true
+  window.addEventListener('popstate', (e) => {
+    const state = e.state
+    if (!state || !state.route) return
+    const s = useStore.getState()
+    if (JSON.stringify(state.route) !== JSON.stringify(s.route)) {
+      s.navigate(state.route, { fromHistory: true })
+    }
+    if ((state.panelItemId || null) !== (s.panelItemId || null)) {
+      if (state.panelItemId) s.openItem(state.panelItemId, { fromHistory: true })
+      else s.closeItem({ fromHistory: true })
+    }
+  })
+}
 
 // ---- Server-sent events: live updates ----
 let es = null

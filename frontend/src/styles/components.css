@@ -552,3 +552,58 @@
 .user-highlight { border-color: var(--primary) !important; box-shadow: 0 0 0 2px rgba(0, 115, 234, .25); }
 
 .grant-editing { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0, 115, 234, .18); }
+
+/* ---------- Job templates ---------- */
+.template-list { display: flex; flex-direction: column; gap: 10px; }
+.template-card {
+  background: var(--surface); border: 1px solid var(--border-light); border-radius: 10px;
+  padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.template-card-head { display: flex; align-items: center; gap: 10px; }
+.template-icon { font-size: 20px; }
+.template-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.template-owner { white-space: nowrap; }
+.template-share { font-size: 13px; white-space: nowrap; }
+.template-card-body { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.template-subs { display: flex; flex-direction: column; gap: 6px; }
+.template-sub-row { display: flex; align-items: center; gap: 8px; }
+.template-sub-row input { flex: 1; }
+.template-preview { font-size: 13px; line-height: 1.4; }
+.new-job-foot { align-items: center; justify-content: space-between; }
+
+/* ---------- Automations (settings) ---------- */
+.settings-tabs { margin-bottom: 18px; }
+.automation-row { align-items: center; gap: 12px; }
+.automation-row.automation-off { opacity: .55; }
+.automation-main { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.automation-main .muted { font-size: 13px; }
+.automation-form {
+  border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px;
+  background: var(--surface-2); margin-top: 10px;
+}
+
+/* Toggle switch */
+.switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; cursor: pointer; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-slider {
+  position: absolute; inset: 0; border-radius: 22px; background: var(--border);
+  transition: background .15s ease;
+}
+.switch-slider::before {
+  content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; top: 3px; left: 3px; transition: transform .15s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.switch input:checked + .switch-slider { background: var(--success, #00c875); }
+.switch input:checked + .switch-slider::before { transform: translateX(18px); }
+
+/* ---------- @mention autocomplete ---------- */
+.mention-box { position: relative; flex: 1; display: flex; }
+.mention-box textarea { width: 100%; }
+.mention-pop {
+  position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; z-index: 950;
+  background: var(--surface); border: 1px solid var(--border-light); border-radius: 10px;
+  box-shadow: var(--shadow-lg); overflow: hidden; max-height: 260px; overflow-y: auto;
+}
+.mention-pop .people-option { width: 100%; }
+.mention-pop .mention-active { background: var(--hover); }

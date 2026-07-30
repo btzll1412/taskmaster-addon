@@ -122,6 +122,12 @@ export default function Sidebar() {
         </div>
 
         <div className="sidebar-bottom">
+          {(user.capabilities || []).includes('create_jobs') && (
+            <button className={`nav-item ${route.page === 'templates' ? 'active' : ''}`} title="Templates"
+              onClick={() => navigate({ page: 'templates' })}>
+              <span className="nav-icon">📦</span><span className="nav-label">Templates</span>
+            </button>
+          )}
           {['super_admin', 'admin', 'company_admin'].includes(user.role) && (
             <button className={`nav-item ${route.page === 'admin' ? 'active' : ''}`} title="Users"
               onClick={() => navigate({ page: 'admin', tab: 'users' })}>
