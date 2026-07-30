@@ -47,25 +47,24 @@ export function OverlayPopover({ anchorRef, onClose, children, width = 230 }) {
   }, [])
 
   useEffect(() => {
-    function handler(e) {
-      if (ref.current && !ref.current.contains(e.target)
-        && !(anchorRef.current && anchorRef.current.contains(e.target))) onClose()
-    }
     function onKey(e) { if (e.key === 'Escape') onClose() }
-    document.addEventListener('mousedown', handler)
     document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', onKey)
-    }
+    return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
   if (!style) return null
   return createPortal(
-    <div ref={ref} className="popover popover-overlay" style={style}
-      onClick={(e) => e.stopPropagation()}>
-      {children}
-    </div>,
+    <>
+      {/* invisible backdrop: closing the popover swallows the tap instead of
+          clicking whatever sits underneath (critical on touch screens) */}
+      <div className="popover-overlay-backdrop"
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose() }}
+        onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onClose() }} />
+      <div ref={ref} className="popover popover-overlay" style={style}
+        onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </>,
     document.body,
   )
 }

@@ -150,7 +150,8 @@ function UsersTab() {
                 {u.role !== 'super_admin' && (
                   <button className="btn btn-small" onClick={() => setGrantsUser(u)}>🔑 Access</button>
                 )}
-                <button className="btn btn-small" onClick={() => setPwUser(u)}>Password</button>
+                <button className="btn btn-small" title="Set a new temporary password — they pick their own on next login"
+                  onClick={() => setPwUser(u)}>🔑 Reset password</button>
                 <button className="btn btn-small" onClick={() => toggleActive(u)} disabled={u.id === user.id}>
                   {u.is_active ? 'Deactivate' : 'Activate'}
                 </button>
@@ -293,7 +294,7 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
 function SetPasswordModal({ user, onClose, showToast }) {
   const [password, setPassword] = useState('')
   return (
-    <Modal title={`Set password — ${user.display_name}`} onClose={onClose}>
+    <Modal title={`Reset password — ${user.display_name}`} onClose={onClose}>
       <form className="form-col" onSubmit={async (e) => {
         e.preventDefault()
         try {
