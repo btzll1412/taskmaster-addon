@@ -56,19 +56,23 @@ def create_app():
     register_blueprints(app)
 
     @app.before_request
-    def viewer_read_only_guard():
+    def api_guards():
         from flask import request
-        if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
-            return None
         if not request.path.startswith('/api'):
+            return None
+        from .auth import current_user
+        from . import permissions as perm
+        u = current_user()
+        # a temporary password only lets you through the auth endpoints —
+        # everything else waits until the user picks their own password
+        if u and u.must_change_password and not request.path.startswith('/api/auth/'):
+            return jsonify({'error': 'You must set a new password first'}), 403
+        if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
             return None
         # viewers may still authenticate and manage their own session basics
         for allowed in ('/api/auth/', '/api/notifications/read'):
             if request.path.startswith(allowed):
                 return None
-        from .auth import current_user
-        from . import permissions as perm
-        u = current_user()
         if u and not perm.can_write(u):
             return jsonify({'error': 'Your role is view-only'}), 403
         return None

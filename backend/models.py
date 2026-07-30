@@ -24,6 +24,8 @@ class User(db.Model):
     company_id = db.Column(db.Integer, db.ForeignKey('companies.id'))
     auth_source = db.Column(db.String(20), default='local')  # local (ldap planned)
     hide_done = db.Column(db.Boolean, default=False)  # personal preference
+    # set when an admin gives them a (temporary) password; forces a change on next login
+    must_change_password = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -38,6 +40,7 @@ class User(db.Model):
             'company_id': self.company_id,
             'is_active': self.is_active,
             'hide_done': bool(self.hide_done),
+            'must_change_password': bool(self.must_change_password),
             'has_password': bool(self.password_hash),
             'initials': ''.join(w[0] for w in self.display_name.split()[:2]).upper() or '?',
         }

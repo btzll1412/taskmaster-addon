@@ -150,7 +150,8 @@ function UsersTab() {
                 {u.role !== 'super_admin' && (
                   <button className="btn btn-small" onClick={() => setGrantsUser(u)}>🔑 Access</button>
                 )}
-                <button className="btn btn-small" onClick={() => setPwUser(u)}>Password</button>
+                <button className="btn btn-small" title="Set a new temporary password — they pick their own on next login"
+                  onClick={() => setPwUser(u)}>🔑 Reset password</button>
                 <button className="btn btn-small" onClick={() => toggleActive(u)} disabled={u.id === user.id}>
                   {u.is_active ? 'Deactivate' : 'Activate'}
                 </button>
@@ -232,8 +233,8 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
             <input value={form.display_name} onChange={set('display_name')} />
           </div>
         </div>
-        <label>Password (min. 6 characters — leave empty to set later)</label>
-        <input type="password" value={form.password} onChange={set('password')} minLength={form.password ? 6 : undefined} />
+        <label>Temporary password <span className="muted">(min. 6 — they must pick their own on first login)</span></label>
+        <input type="password" value={form.password} onChange={set('password')} required minLength={6} />
 
         {me.role !== 'company_admin' && (
           <>
@@ -293,7 +294,7 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
 function SetPasswordModal({ user, onClose, showToast }) {
   const [password, setPassword] = useState('')
   return (
-    <Modal title={`Set password — ${user.display_name}`} onClose={onClose}>
+    <Modal title={`Reset password — ${user.display_name}`} onClose={onClose}>
       <form className="form-col" onSubmit={async (e) => {
         e.preventDefault()
         try {
@@ -302,9 +303,9 @@ function SetPasswordModal({ user, onClose, showToast }) {
           onClose()
         } catch (err) { showToast(err.message) }
       }}>
-        <label>New password (min. 6 characters)</label>
+        <label>Temporary password <span className="muted">(min. 6 — they must pick their own on next login)</span></label>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} autoFocus />
-        <button className="btn btn-primary">Set password</button>
+        <button className="btn btn-primary">Set temporary password</button>
       </form>
     </Modal>
   )

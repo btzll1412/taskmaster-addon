@@ -62,8 +62,8 @@ def create_user(actor):
     if User.query.filter_by(username=username).first():
         return jsonify({'error': 'Username already exists'}), 409
     password = data.get('password') or ''
-    if password and len(password) < 6:
-        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'A temporary password of at least 6 characters is required'}), 400
 
     company_id = data.get('company_id') or None
     if perm.is_super(actor):
@@ -89,7 +89,8 @@ def create_user(actor):
         role=role,
         custom_role_id=custom_role_id,
         company_id=company_id,
-        password_hash=generate_password_hash(password) if password else None,
+        password_hash=generate_password_hash(password),
+        must_change_password=True,  # admin-set passwords are temporary
     )
     db.session.add(u)
     db.session.flush()
@@ -163,5 +164,7 @@ def set_password(actor, user_id):
     if len(password) < 6:
         return jsonify({'error': 'Password must be at least 6 characters'}), 400
     u.password_hash = generate_password_hash(password)
+    # admins hand out temporary passwords; owners keep their own
+    u.must_change_password = u.id != actor.id
     db.session.commit()
     return jsonify({'ok': True})

@@ -645,3 +645,4 @@ body.resizing-col { cursor: col-resize; user-select: none; }
 .tpl-sub-name { display: flex; align-items: center; gap: 6px; }
 .template-modal-body { display: flex; flex-direction: column; gap: 14px; }
 .modal-card:has(.template-modal-body) { width: 880px; }
+.popover-overlay-backdrop { position: fixed; inset: 0; z-index: 899; }

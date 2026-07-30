@@ -243,10 +243,61 @@
   .stat-tiles { gap: 8px; }
   .stat-tile { padding: 12px 16px; min-width: calc(50% - 8px); flex: 1; }
   /* Hover-revealed controls must always be visible on touch screens */
-  .open-btn, .item-menu, .group-menu, .col-menu-btn, .cell-empty-icon { opacity: 1 !important; }
+  .open-btn, .item-menu, .group-menu, .col-menu-btn, .cell-empty-icon, .tree-add { opacity: 1 !important; }
   .update-del { opacity: 1; }
   /* iOS zooms into inputs with font-size < 16px — keep them at 16px */
   input, select, textarea { font-size: 16px; }
+
+  /* Modals: use nearly the whole screen so forms + keyboard fit */
+  .modal-backdrop { padding-top: 4dvh; align-items: flex-start; }
+  .modal-card { width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px); max-height: 90dvh; }
+
+  /* Job panel: full-screen sheet with safe-area breathing room */
+  .item-panel { width: 100vw; padding-bottom: env(safe-area-inset-bottom); }
+  .panel-head { padding: 14px 14px 8px; flex-wrap: wrap; }
+  .panel-fields { padding: 8px 14px 12px; }
+  .panel-body { padding: 14px; }
+  .panel-tabs { padding: 8px 14px 0; overflow-x: auto; }
+
+  /* One-line horizontally scrollable bars instead of tall wrapped stacks
+     (.board-head prefix outranks the base rule declared later in this file) */
+  .board-head .status-filter-bar, .view-tabs {
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .board-head .status-filter-bar::-webkit-scrollbar, .view-tabs::-webkit-scrollbar { display: none; }
+  .status-filter-chip { white-space: nowrap; flex-shrink: 0; }
+  .person-filter { overflow-x: auto; scrollbar-width: none; max-width: 45vw; }
+
+  /* Kanban: swipeable lanes, next lane peeks in from the edge */
+  .kanban-lanes { scroll-snap-type: x proximity; }
+  .kanban-lane { min-width: min(300px, 82vw); scroll-snap-align: start; }
+
+  /* Home cards: two per row */
+  .overview-cards { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .overview-card { padding: 16px 10px; }
+  .overview-icon { font-size: 30px; }
+  .overview-num { font-size: 28px; }
+
+  .entity-head h2 { font-size: 20px; }
+  .board-head h2 { font-size: 20px; }
+  .settings-tabs { overflow-x: auto; }
+  .home-columns { grid-template-columns: 1fr; }
+}
+
+/* Touch devices (any size): comfortable tap targets */
+@media (pointer: coarse) {
+  .icon-btn { min-width: 36px; min-height: 36px; }
+  .btn { min-height: 40px; }
+  .btn-small { min-height: 34px; }
+  .tree-row { padding: 8px 6px; }
+  .nav-item { padding: 12px; }
+  .board-table td { height: 42px; }
+  .panel-tabs button { padding: 10px 14px; }
+  .menu-item { padding: 11px 12px; }
+  .people-option { padding: 10px 12px; }
+  .label-option { padding: 10px 12px; }
+  .col-resizer { width: 16px; right: -8px; }
   .modal-backdrop { padding-top: 6vh; }
 }
 
