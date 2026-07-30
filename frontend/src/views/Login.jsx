@@ -3,7 +3,7 @@ import { api } from '../api'
 import { useStore } from '../store'
 
 export default function Login() {
-  const { setupRequired, init } = useStore()
+  const { setupRequired, init, sessionNotice } = useStore()
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
@@ -47,6 +47,7 @@ export default function Login() {
       <div className="auth-form-side">
         <form className="auth-form" onSubmit={submit}>
           <div className="auth-form-logo">✅ <strong>TaskMaster</strong></div>
+          {sessionNotice && <div className="auth-notice">⏳ {sessionNotice}</div>}
           {setupRequired ? (
             <>
               <h2>Set up your workspace</h2>

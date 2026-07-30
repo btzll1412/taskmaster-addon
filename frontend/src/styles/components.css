@@ -702,3 +702,7 @@ body.resizing-col { cursor: col-resize; user-select: none; }
   .auth-features, .auth-brand-foot { display: none; }
   .auth-form-side { align-items: flex-start; padding-top: 26px; }
 }
+.auth-notice {
+  background: rgba(253, 171, 61, .15); border: 1px solid #fdab3d; color: var(--text);
+  border-radius: 8px; padding: 10px 14px; font-size: 14px; margin-bottom: 10px;
+}
