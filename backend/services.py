@@ -187,7 +187,9 @@ def purge_board(board):
 def apply_template(user, board, item, template, log):
     """Fill a fresh job from a template: field values matched to the board's
     columns by type (+title when several share a type), plus its own copy of
-    the sub-task list. Unmatched fields are skipped silently."""
+    the sub-task list — each sub-task with its own values. Unmatched fields
+    are skipped silently."""
+    from datetime import date, timedelta
     data = template.data_dict()
     columns = BoardColumn.query.filter_by(board_id=board.id).order_by(BoardColumn.position).all()
 
@@ -205,21 +207,30 @@ def apply_template(user, board, item, template, log):
                 if l['label'].strip().lower() == wanted:
                     return {'id': l['id']}
             return None
+        if col.type == 'date' and spec.get('days') is not None:
+            try:
+                due = date.today() + timedelta(days=int(spec['days']))
+            except (TypeError, ValueError):
+                return None
+            return {'date': due.isoformat()}
         if col.type == 'text' and spec.get('text'):
             return {'text': spec['text']}
         if col.type == 'number' and spec.get('number') is not None:
             return {'number': spec['number']}
         return None
 
-    for spec in data.get('values', []):
-        col = find_column(spec)
-        if col is None:
-            continue
-        value = value_for(col, spec)
-        if value is None:
-            continue
-        db.session.add(ItemValue(item_id=item.id, column_id=col.id,
-                                 value=json.dumps(value)))
+    def apply_specs(target_item, specs):
+        for spec in specs:
+            col = find_column(spec)
+            if col is None:
+                continue
+            value = value_for(col, spec)
+            if value is None:
+                continue
+            db.session.add(ItemValue(item_id=target_item.id, column_id=col.id,
+                                     value=json.dumps(value)))
+
+    apply_specs(item, data.get('values', []))
 
     position = 0
     for sub in data.get('subtasks', []):
@@ -230,6 +241,8 @@ def apply_template(user, board, item, template, log):
         child = Item(board_id=board.id, group_id=item.group_id, name=name,
                      parent_id=item.id, position=position, created_by=user.id)
         db.session.add(child)
+        db.session.flush()
+        apply_specs(child, sub.get('values') or [])
     if log:
         log_activity(user.id, board.id, item.id, 'item_created',
                      f'created "{item.name}" from template "{template.name}"')

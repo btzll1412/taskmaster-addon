@@ -607,3 +607,41 @@
 }
 .mention-pop .people-option { width: 100%; }
 .mention-pop .mention-active { background: var(--hover); }
+
+/* ---------- Column drag-resize ---------- */
+.board-table th { position: relative; }
+.col-resizer {
+  position: absolute; top: 0; bottom: 0; right: -4px; width: 9px;
+  cursor: col-resize; z-index: 5; touch-action: none;
+}
+.col-resizer:hover, body.resizing-col .col-resizer { background: rgba(0, 115, 234, .25); }
+body.resizing-col { cursor: col-resize; user-select: none; }
+
+/* ---------- Template designer (board-style) ---------- */
+.template-table-wrap { overflow-x: auto; border: 1px solid var(--border-light); border-radius: 10px; }
+.template-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.template-table th {
+  text-align: left; font-weight: 600; font-size: 13px; color: var(--text-muted);
+  padding: 8px 10px; border-bottom: 1px solid var(--border-light);
+  background: var(--surface-2); white-space: nowrap;
+}
+.template-table td { padding: 4px 6px; border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+.template-table tr:last-child td { border-bottom: none; }
+.template-job-row { background: rgba(0, 115, 234, .05); }
+.template-job-row td:first-child { font-weight: 600; white-space: nowrap; }
+.template-table input[type="text"], .template-table input:not([type]) {
+  border: 1px solid transparent; background: transparent; width: 100%; min-width: 130px;
+  padding: 5px 7px; border-radius: 6px;
+}
+.template-table input:hover { border-color: var(--border); }
+.template-table input:focus { border-color: var(--primary); background: var(--surface); }
+.template-days { width: 68px !important; min-width: 68px !important; text-align: center; }
+.tpl-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 108px; padding: 5px 10px; border-radius: 6px; color: #fff;
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.tpl-chip-empty { background: var(--surface-2); color: var(--text-muted); border: 1px dashed var(--border); }
+.tpl-sub-name { display: flex; align-items: center; gap: 6px; }
+.template-modal-body { display: flex; flex-direction: column; gap: 14px; }
+.modal-card:has(.template-modal-body) { width: 880px; }
