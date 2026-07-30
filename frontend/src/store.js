@@ -29,7 +29,8 @@ export const useStore = create((set, get) => ({
   async init() {
     const st = await api.get('/api/auth/status')
     set({ authChecked: true, setupRequired: st.setup_required, user: st.user })
-    if (st.user) await get().loadCore()
+    // with a temporary password the rest of the API is locked until it's changed
+    if (st.user && !st.user.must_change_password) await get().loadCore()
   },
 
   async loadCore() {

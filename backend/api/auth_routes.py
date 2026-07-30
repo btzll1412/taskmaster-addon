@@ -87,9 +87,14 @@ def change_password(user):
         return jsonify({'error': 'Current password is incorrect'}), 400
     if len(new) < 6:
         return jsonify({'error': 'New password must be at least 6 characters'}), 400
+    if new == current:
+        return jsonify({'error': 'The new password must be different from the temporary one'
+                        if user.must_change_password else
+                        'The new password must be different from the current one'}), 400
     user.password_hash = generate_password_hash(new)
+    user.must_change_password = False
     db.session.commit()
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'user': _user_payload(user)})
 
 
 @bp.put('/profile')

@@ -36,6 +36,7 @@ def ensure_schema():
         _ensure_column('users', 'company_id', 'company_id INTEGER')
         _ensure_column('users', 'custom_role_id', 'custom_role_id INTEGER')
         _ensure_column('users', 'hide_done', 'hide_done INTEGER DEFAULT 0')
+        _ensure_column('users', 'must_change_password', 'must_change_password INTEGER DEFAULT 0')
     if 'activity' in tables:
         _ensure_column('activity', 'company_id', 'company_id INTEGER')
     if 'roles' in tables:

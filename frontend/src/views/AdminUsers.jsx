@@ -232,8 +232,8 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
             <input value={form.display_name} onChange={set('display_name')} />
           </div>
         </div>
-        <label>Password (min. 6 characters — leave empty to set later)</label>
-        <input type="password" value={form.password} onChange={set('password')} minLength={form.password ? 6 : undefined} />
+        <label>Temporary password <span className="muted">(min. 6 — they must pick their own on first login)</span></label>
+        <input type="password" value={form.password} onChange={set('password')} required minLength={6} />
 
         {me.role !== 'company_admin' && (
           <>
@@ -302,9 +302,9 @@ function SetPasswordModal({ user, onClose, showToast }) {
           onClose()
         } catch (err) { showToast(err.message) }
       }}>
-        <label>New password (min. 6 characters)</label>
+        <label>Temporary password <span className="muted">(min. 6 — they must pick their own on next login)</span></label>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} autoFocus />
-        <button className="btn btn-primary">Set password</button>
+        <button className="btn btn-primary">Set temporary password</button>
       </form>
     </Modal>
   )

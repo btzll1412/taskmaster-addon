@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { useStore, connectEvents, disconnectEvents, connectHistory } from './store'
 import Login from './views/Login'
+import ForcePasswordChange from './views/ForcePasswordChange'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import HomeView from './views/HomeView'
@@ -20,11 +21,15 @@ export default function App() {
 
   useEffect(() => { init() }, [])
   useEffect(() => {
-    if (user) { connectEvents(); connectHistory(); return () => disconnectEvents() }
-  }, [user?.id])
+    if (user && !user.must_change_password) {
+      connectEvents(); connectHistory()
+      return () => disconnectEvents()
+    }
+  }, [user?.id, user?.must_change_password])
 
   if (!authChecked) return <div className="app-loading">Loading…</div>
   if (!user) return <Login />
+  if (user.must_change_password) return <ForcePasswordChange />
 
   return (
     <div className="app">
