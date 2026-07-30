@@ -12,10 +12,10 @@ from .. import permissions as perm
 from ..auth import login_required
 from ..config import ALLOWED_EXTENSIONS, UPLOAD_DIR
 from ..db import db
-from ..models import (Activity, Board, BoardColumn, BoardGroup, FileAsset,
-                      Item, ItemUpdate, ItemValue, NotificationRule, User)
-from ..services import (broadcast_board, log_activity, notify_user,
-                        people_column_user_ids)
+from ..models import (Activity, AutomationRule, Board, BoardColumn, BoardGroup,
+                      FileAsset, Item, ItemUpdate, ItemValue, JobTemplate, User)
+from ..services import (apply_template, broadcast_board, log_activity,
+                        notify_user, people_column_user_ids, purge_items)
 
 bp = Blueprint('items', __name__, url_prefix='/api')
 
@@ -59,7 +59,40 @@ def create_item(user, board_id):
                 position=max_pos + 1, created_by=user.id)
     db.session.add(item)
     db.session.flush()
-    log_activity(user.id, board.id, item.id, 'item_created', f'created "{name}"')
+
+    # Optional template: pre-fills fields and creates the job's own sub-tasks
+    template = None
+    if data.get('template_id') and parent is None:
+        template = db.session.get(JobTemplate, data['template_id'])
+        if template and not (template.owner_id == user.id or template.shared
+                             or perm.is_super(user)):
+            return jsonify({'error': 'That template is not shared with you'}), 403
+        if template:
+            apply_template(user, board, item, template, log=True)
+    if template is None:
+        log_activity(user.id, board.id, item.id, 'item_created', f'created "{name}"')
+
+    # Optional immediate assignee (validated like any people-column change)
+    assignee_id = data.get('assignee_id')
+    if assignee_id and parent is None:
+        assignee_id = int(assignee_id)
+        if assignee_id not in perm.eligible_assignee_ids(item):
+            db.session.rollback()
+            return jsonify({'error': 'That person has no access to this job — grant access first (🔑)'}), 400
+        people_col = (BoardColumn.query.filter_by(board_id=board.id, type='people')
+                      .order_by(BoardColumn.position).first())
+        if people_col:
+            existing = ItemValue.query.filter_by(item_id=item.id, column_id=people_col.id).first()
+            ids = set((existing.value_dict().get('user_ids') if existing else None) or [])
+            ids.add(assignee_id)
+            payload = json.dumps({'user_ids': sorted(ids)})
+            if existing:
+                existing.value = payload
+            else:
+                db.session.add(ItemValue(item_id=item.id, column_id=people_col.id, value=payload))
+            notify_user(assignee_id, user.id, 'assigned', board.id, item.id,
+                        f'{user.display_name} assigned you to "{item.name}" on {board.name}')
+
     db.session.commit()
     broadcast_board(board.id)
     ha.fire_event('taskmaster_item_created', {
@@ -106,20 +139,10 @@ def delete_item(user, item_id):
         return jsonify({'error': 'No permission to delete this item'}), 403
     board_id = item.board_id
     kind = 'sub-task' if item.parent_id else 'job'
+    purge_items([item])
     log_activity(user.id, board_id, None, 'item_deleted',
                  f'deleted {kind} "{item.name}" from "{board.name}"',
                  company_id=perm.board_company_id(board))
-    targets = [item] + Item.query.filter_by(parent_id=item.id).all()
-    for t in targets:
-        ItemValue.query.filter_by(item_id=t.id).delete()
-        ItemUpdate.query.filter_by(item_id=t.id).delete()
-        for f in FileAsset.query.filter_by(item_id=t.id).all():
-            try:
-                os.remove(os.path.join(UPLOAD_DIR, f.filename))
-            except OSError:
-                pass
-            db.session.delete(f)
-        db.session.delete(t)
     db.session.commit()
     broadcast_board(board_id)
     return jsonify({'ok': True})
@@ -220,13 +243,20 @@ def set_value(user, item_id, column_id):
             notify_user(uid, user.id, 'status', item.board_id, item.id,
                         f'{user.display_name} set {col.title} of "{item.name}" to {new_desc}')
             notified.add(uid)
-        # Board notification rules: when <column> becomes <label>, notify <users>
-        new_label_id = (value or {}).get('id')
-        for rule in NotificationRule.query.filter_by(board_id=item.board_id,
-                                                     column_id=col.id).all():
-            if rule.label_id and rule.label_id != new_label_id:
+        # Central automations: global rules (unless this company opted out)
+        # plus this company's own rules, matched by the new label's text
+        company_id = perm.board_company_id(board)
+        for rule in AutomationRule.query.filter_by(enabled=True).all():
+            if rule.company_id is not None and rule.company_id != company_id:
                 continue
-            for uid in rule.user_id_list():
+            if rule.company_id is None and company_id in rule.disabled_company_list():
+                continue
+            if rule.label_text and rule.label_text.strip().lower() != new_desc.strip().lower():
+                continue
+            targets = set(rule.user_id_list())
+            if rule.notify_assignees:
+                targets |= people_column_user_ids(item.id)
+            for uid in targets:
                 if uid not in notified:
                     notify_user(uid, user.id, 'status', item.board_id, item.id,
                                 f'{col.title} of "{item.name}" on {board.name} changed to {new_desc}')

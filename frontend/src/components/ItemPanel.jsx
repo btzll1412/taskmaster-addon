@@ -114,9 +114,8 @@ export default function ItemPanel({ itemId }) {
             <div className="updates-tab">
               {canEditItems && (
                 <form className="update-composer" onSubmit={postUpdate}>
-                  <textarea placeholder="Write an update… use @username to flag someone" value={body} rows={3}
-                    onChange={e => setBody(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postUpdate(e) }} />
+                  <MentionTextarea value={body} onChange={setBody} users={jobUsers}
+                    onSubmit={postUpdate} />
                   <button className="btn btn-primary btn-small" disabled={!body.trim()}>Update</button>
                 </form>
               )}
@@ -196,6 +195,81 @@ export default function ItemPanel({ itemId }) {
         </div>
       </aside>
     </>
+  )
+}
+
+/** Update composer textarea: typing @ pops a filtered people picker;
+ * picking someone inserts their @username plus a trailing space. */
+function MentionTextarea({ value, onChange, users, onSubmit }) {
+  const ref = useRef(null)
+  const [mention, setMention] = useState(null) // {start, query}
+  const [highlight, setHighlight] = useState(0)
+
+  function detect(text, caret) {
+    const before = text.slice(0, caret)
+    const m = before.match(/@([A-Za-z0-9_.\-]*)$/)
+    if (!m) return null
+    const start = caret - m[1].length - 1
+    if (start > 0 && !/[\s]/.test(before[start - 1])) return null  // mid-word @
+    return { start, query: m[1].toLowerCase() }
+  }
+
+  const matches = mention
+    ? users.filter(u => u.is_active !== false &&
+        (u.username.toLowerCase().startsWith(mention.query) ||
+         u.display_name.toLowerCase().includes(mention.query))).slice(0, 8)
+    : []
+
+  function handleChange(e) {
+    onChange(e.target.value)
+    setMention(detect(e.target.value, e.target.selectionStart))
+    setHighlight(0)
+  }
+
+  function pick(u) {
+    const el = ref.current
+    const caret = el.selectionStart
+    const next = value.slice(0, mention.start) + '@' + u.username + ' ' + value.slice(caret)
+    onChange(next)
+    setMention(null)
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = mention.start + u.username.length + 2
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
+  function handleKey(e) {
+    if (mention && matches.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => (h + 1) % matches.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => (h - 1 + matches.length) % matches.length); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(matches[highlight]); return }
+      if (e.key === 'Escape') { setMention(null); return }
+    }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onSubmit(e)
+  }
+
+  return (
+    <div className="mention-box">
+      <textarea ref={ref} placeholder="Write an update… type @ to flag someone" value={value} rows={3}
+        onChange={handleChange} onKeyDown={handleKey}
+        onClick={e => setMention(detect(e.target.value, e.target.selectionStart))}
+        onBlur={() => setTimeout(() => setMention(null), 200)} />
+      {mention && matches.length > 0 && (
+        <div className="mention-pop">
+          {matches.map((u, i) => (
+            <button key={u.id} type="button"
+              className={`people-option ${i === highlight ? 'mention-active' : ''}`}
+              onMouseDown={e => { e.preventDefault(); pick(u) }}
+              onMouseEnter={() => setHighlight(i)}>
+              <Avatar user={u} size={22} />
+              <span>{u.display_name}</span>
+              <span className="muted">@{u.username}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

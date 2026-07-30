@@ -134,9 +134,10 @@ def delete_board(user, board_id):
     name = board.name
     dept = db.session.get(Department, board.department_id) if board.department_id else None
     where = f' ({dept.name})' if dept else ''
+    from ..services import purge_board
+    purge_board(board)
     log_activity(user.id, None, None, 'board_deleted',
                  f'deleted board "{name}"{where}', company_id=company_id)
-    db.session.delete(board)
     db.session.commit()
     broadcast_board(board_id, kind='board_deleted')
     ha.fire_event('taskmaster_board_deleted', {'board_id': board_id, 'name': name})
@@ -226,7 +227,8 @@ def delete_group(user, group_id):
     board_id = group.board_id
     if BoardGroup.query.filter_by(board_id=board_id).count() <= 1:
         return jsonify({'error': 'A board must keep at least one group'}), 400
-    Item.query.filter_by(group_id=group.id).delete()
+    from ..services import purge_items
+    purge_items(Item.query.filter_by(group_id=group.id).all())
     log_activity(user.id, board_id, None, 'group_deleted', f'deleted group "{group.name}"')
     db.session.delete(group)
     db.session.commit()
@@ -290,6 +292,9 @@ def delete_column(user, column_id):
     if not perm.can_edit_board(user, board):
         return jsonify({'error': 'No permission to edit this board'}), 403
     board_id = col.board_id
+    from ..models import ItemValue, NotificationRule
+    ItemValue.query.filter_by(column_id=col.id).delete(synchronize_session=False)
+    NotificationRule.query.filter_by(column_id=col.id).delete(synchronize_session=False)
     log_activity(user.id, board_id, None, 'column_deleted', f'deleted column "{col.title}"')
     db.session.delete(col)
     db.session.commit()

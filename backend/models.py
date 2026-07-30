@@ -432,6 +432,88 @@ class NotificationRule(db.Model):
         }
 
 
+class JobTemplate(db.Model):
+    """Reusable pre-configured job: default field values + a list of sub-tasks.
+    Owned by its creator; `shared` publishes it for everyone to use."""
+    __tablename__ = 'job_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    icon = db.Column(db.String(16), default='📦')
+    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    shared = db.Column(db.Boolean, default=False)
+    # {'values': [{'title','type','label'|'text'|'number'|...}], 'subtasks': [{'name'}]}
+    data = db.Column(db.Text, default='{}')
+    created_at = db.Column(db.DateTime, default=utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+
+    def data_dict(self):
+        try:
+            return json.loads(self.data or '{}')
+        except ValueError:
+            return {}
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'icon': self.icon or '📦',
+            'owner_id': self.owner_id,
+            'shared': bool(self.shared),
+            'data': self.data_dict(),
+            'created_at': iso(self.created_at),
+        }
+
+
+class AutomationRule(db.Model):
+    """Central automation: when a status/priority value becomes <label>, notify people.
+    company_id NULL = global (super admin) rule applied to every company; a company
+    can opt out of a global rule via disabled_company_ids."""
+    __tablename__ = 'automation_rules'
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='CASCADE'))
+    name = db.Column(db.String(200), nullable=False, default='')
+    label_text = db.Column(db.String(120))  # match by label text; NULL = any change
+    notify_user_ids = db.Column(db.Text, default='[]')
+    notify_assignees = db.Column(db.Boolean, default=False)
+    enabled = db.Column(db.Boolean, default=True)
+    disabled_company_ids = db.Column(db.Text, default='[]')  # per-company opt-out of a global rule
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    def user_id_list(self):
+        try:
+            return json.loads(self.notify_user_ids or '[]')
+        except ValueError:
+            return []
+
+    def disabled_company_list(self):
+        try:
+            return json.loads(self.disabled_company_ids or '[]')
+        except ValueError:
+            return []
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'company_id': self.company_id,
+            'name': self.name,
+            'label_text': self.label_text,
+            'notify_user_ids': self.user_id_list(),
+            'notify_assignees': bool(self.notify_assignees),
+            'enabled': bool(self.enabled),
+            'disabled_company_ids': self.disabled_company_list(),
+            'created_by': self.created_by,
+        }
+
+
+# Actions that form the permanent audit trail — they must survive the deletion
+# of the objects they describe.
+AUDIT_ACTION_LIST = ('board_deleted', 'item_deleted', 'group_deleted', 'column_deleted',
+                     'company_deleted', 'department_deleted', 'role_deleted',
+                     'user_created', 'user_deactivated', 'user_activated', 'user_role_changed',
+                     'access_granted', 'access_changed', 'access_revoked')
+
+
 def iso(dt):
     if not dt:
         return None

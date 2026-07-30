@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { useStore, connectEvents, disconnectEvents } from './store'
+import { useStore, connectEvents, disconnectEvents, connectHistory } from './store'
 import Login from './views/Login'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
@@ -12,6 +12,7 @@ import DepartmentPage from './views/DepartmentPage'
 import { DepartmentsDirectory, ItemsDirectory } from './views/Directory'
 import Settings from './views/Settings'
 import CompaniesDirectory from './views/CompaniesDirectory'
+import TemplatesPage from './views/TemplatesPage'
 import ItemPanel from './components/ItemPanel'
 
 export default function App() {
@@ -19,7 +20,7 @@ export default function App() {
 
   useEffect(() => { init() }, [])
   useEffect(() => {
-    if (user) { connectEvents(); return () => disconnectEvents() }
+    if (user) { connectEvents(); connectHistory(); return () => disconnectEvents() }
   }, [user?.id])
 
   if (!authChecked) return <div className="app-loading">Loading…</div>
@@ -42,6 +43,7 @@ export default function App() {
           {route.page === 'tasks' && <ItemsDirectory kind="tasks" key="tasks" />}
           {route.page === 'settings' && <Settings />}
           {route.page === 'companies' && <CompaniesDirectory />}
+          {route.page === 'templates' && <TemplatesPage />}
         </div>
       </div>
       {panelItemId && <ItemPanel itemId={panelItemId} />}

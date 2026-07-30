@@ -1,4 +1,4 @@
-"""Companies, departments, the workspace tree, access grants, notification rules."""
+"""Companies, departments, the workspace tree, access grants, automations, templates."""
 import json
 
 from flask import Blueprint, jsonify, request
@@ -7,8 +7,8 @@ from .. import permissions as perm
 from ..auth import login_required
 from ..db import db
 from ..models import (AccessGrant, Board, BoardColumn, Company, Department,
-                      Item, NotificationRule, Role, User)
-from ..services import broadcast_board, log_activity
+                      Item, JobTemplate, Role, User)
+from ..services import log_activity
 
 bp = Blueprint('workspace', __name__, url_prefix='/api')
 
@@ -407,10 +407,7 @@ def delete_role(user, role_id):
 
 # ---- Audit log ----
 
-AUDIT_ACTIONS = ('board_deleted', 'item_deleted', 'group_deleted', 'column_deleted',
-                 'company_deleted', 'department_deleted', 'role_deleted',
-                 'user_created', 'user_deactivated', 'user_activated', 'user_role_changed',
-                 'access_granted', 'access_changed', 'access_revoked')
+from ..models import AUDIT_ACTION_LIST as AUDIT_ACTIONS  # noqa: E402
 
 
 @bp.get('/audit')
@@ -433,51 +430,204 @@ def audit(user):
     return jsonify({'audit': [a.to_dict() for a in rows], 'users': users})
 
 
-# ---- Notification rules ----
+# ---- Automations (central, admin-managed) ----
 
-@bp.get('/boards/<int:board_id>/rules')
+def _automation_admin(user):
+    """super/staff admins manage global + managed companies; company admins their own."""
+    return user.role in ('super_admin', 'admin', 'company_admin')
+
+
+def _admin_company_ids(user):
+    if user.role == 'admin':
+        return set(perm.managed_company_ids(user))
+    if user.role == 'company_admin':
+        return {user.company_id} if user.company_id else set()
+    return set()
+
+
+@bp.get('/automations')
 @login_required
-def list_rules(user, board_id):
-    board = Board.query.get_or_404(board_id)
-    if not perm.can_edit_board(user, board):
+def list_automations(user):
+    from ..models import AutomationRule
+    if not _automation_admin(user):
         return jsonify({'error': 'No permission'}), 403
-    rules = NotificationRule.query.filter_by(board_id=board.id).all()
-    return jsonify({'rules': [r.to_dict() for r in rules]})
+    rules = AutomationRule.query.order_by(AutomationRule.company_id.isnot(None),
+                                          AutomationRule.id).all()
+    if not perm.is_super(user):
+        mine = _admin_company_ids(user)
+        rules = [r for r in rules if r.company_id is None or r.company_id in mine]
+    users = {u.id: u.to_dict() for u in User.query.all()}
+    companies = {c.id: c.name for c in Company.query.all()}
+    return jsonify({'automations': [r.to_dict() for r in rules],
+                    'users': users, 'company_names': companies})
 
 
-@bp.post('/boards/<int:board_id>/rules')
+@bp.post('/automations')
 @login_required
-def create_rule(user, board_id):
-    board = Board.query.get_or_404(board_id)
-    if not perm.can_edit_board(user, board):
+def create_automation(user):
+    from ..models import AutomationRule
+    if not _automation_admin(user):
         return jsonify({'error': 'No permission'}), 403
     data = request.json or {}
-    col = BoardColumn.query.filter_by(id=data.get('column_id'), board_id=board.id).first()
-    if not col or col.type not in ('status', 'priority'):
-        return jsonify({'error': 'Rule needs a status column on this board'}), 400
-    user_ids = [int(u) for u in (data.get('user_ids') or [])]
-    if not user_ids:
-        return jsonify({'error': 'Pick at least one person to notify'}), 400
-    r = NotificationRule(
-        board_id=board.id, column_id=col.id,
-        label_id=data.get('label_id') or None,
-        user_ids=json.dumps(user_ids), created_by=user.id,
+    company_id = data.get('company_id')
+    if perm.is_super(user):
+        company_id = int(company_id) if company_id else None  # None = every company
+    else:
+        mine = _admin_company_ids(user)
+        if not company_id or int(company_id) not in mine:
+            return jsonify({'error': 'You can only create automations for your own company'}), 403
+        company_id = int(company_id)
+    user_ids = [int(u) for u in (data.get('notify_user_ids') or [])]
+    notify_assignees = bool(data.get('notify_assignees'))
+    if not user_ids and not notify_assignees:
+        return jsonify({'error': 'Pick people to notify (or the assigned people option)'}), 400
+    label = (data.get('label_text') or '').strip() or None
+    r = AutomationRule(
+        company_id=company_id,
+        name=(data.get('name') or '').strip() or (f'Notify when status becomes {label}' if label else 'Notify on status change'),
+        label_text=label,
+        notify_user_ids=json.dumps(user_ids),
+        notify_assignees=notify_assignees,
+        created_by=user.id,
     )
     db.session.add(r)
-    log_activity(user.id, board.id, None, 'rule_created',
-                 f'added a notification rule on {col.title}')
     db.session.commit()
-    broadcast_board(board.id)
-    return jsonify({'rule': r.to_dict()}), 201
+    return jsonify({'automation': r.to_dict()}), 201
 
 
-@bp.delete('/rules/<int:rule_id>')
+@bp.put('/automations/<int:rule_id>')
 @login_required
-def delete_rule(user, rule_id):
-    r = NotificationRule.query.get_or_404(rule_id)
-    board = db.session.get(Board, r.board_id)
-    if not board or not perm.can_edit_board(user, board):
+def update_automation(user, rule_id):
+    from ..models import AutomationRule
+    if not _automation_admin(user):
         return jsonify({'error': 'No permission'}), 403
+    r = AutomationRule.query.get_or_404(rule_id)
+    data = request.json or {}
+    mine = _admin_company_ids(user)
+
+    if perm.is_super(user) or (r.company_id and r.company_id in mine):
+        # full edit rights on own rules (super: on everything)
+        if 'name' in data:
+            r.name = (data['name'] or '').strip()
+        if 'label_text' in data:
+            r.label_text = (data['label_text'] or '').strip() or None
+        if 'notify_user_ids' in data:
+            r.notify_user_ids = json.dumps([int(u) for u in (data['notify_user_ids'] or [])])
+        if 'notify_assignees' in data:
+            r.notify_assignees = bool(data['notify_assignees'])
+        if 'enabled' in data:
+            r.enabled = bool(data['enabled'])
+    elif r.company_id is None and mine and 'enabled' in data:
+        # company admin toggling a global rule: opt their company in/out only
+        disabled = set(r.disabled_company_list())
+        if data['enabled']:
+            disabled -= mine
+        else:
+            disabled |= mine
+        r.disabled_company_ids = json.dumps(sorted(disabled))
+    else:
+        return jsonify({'error': 'No permission to change this automation'}), 403
+    db.session.commit()
+    return jsonify({'automation': r.to_dict()})
+
+
+@bp.delete('/automations/<int:rule_id>')
+@login_required
+def delete_automation(user, rule_id):
+    from ..models import AutomationRule
+    r = AutomationRule.query.get_or_404(rule_id)
+    mine = _admin_company_ids(user)
+    if not (perm.is_super(user) or (r.company_id and r.company_id in mine)):
+        return jsonify({'error': 'No permission to delete this automation'}), 403
     db.session.delete(r)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+# ---- Job templates ----
+
+def _clean_template_data(data):
+    """Keep only the shapes apply_template understands."""
+    values = []
+    for spec in (data.get('values') or [])[:30]:
+        if not isinstance(spec, dict) or not spec.get('type'):
+            continue
+        keep = {'type': str(spec['type']), 'title': str(spec.get('title') or '')}
+        for k in ('label', 'text', 'number'):
+            if spec.get(k) not in (None, ''):
+                keep[k] = spec[k]
+        if len(keep) > 2:
+            values.append(keep)
+    subtasks = []
+    for sub in (data.get('subtasks') or [])[:100]:
+        name = ((sub.get('name') if isinstance(sub, dict) else str(sub)) or '').strip()
+        if name:
+            subtasks.append({'name': name[:500]})
+    return {'values': values, 'subtasks': subtasks}
+
+
+@bp.get('/templates')
+@login_required
+def list_templates(user):
+    mine = JobTemplate.query.filter_by(owner_id=user.id).order_by(JobTemplate.name).all()
+    shared = (JobTemplate.query.filter(JobTemplate.shared.is_(True),
+                                       JobTemplate.owner_id != user.id)
+              .order_by(JobTemplate.name).all())
+    owners = {u.id: u.display_name for u in User.query.all()}
+    def out(rows):
+        result = []
+        for t in rows:
+            d = t.to_dict()
+            d['owner_name'] = owners.get(t.owner_id, '?')
+            result.append(d)
+        return result
+    return jsonify({'mine': out(mine), 'shared': out(shared)})
+
+
+@bp.post('/templates')
+@login_required
+def create_template(user):
+    if not perm.has_cap(user, perm.CAP_CREATE):
+        return jsonify({'error': 'Your role cannot create jobs'}), 403
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Template name is required'}), 400
+    t = JobTemplate(
+        name=name, icon=data.get('icon') or '📦', owner_id=user.id,
+        shared=bool(data.get('shared')),
+        data=json.dumps(_clean_template_data(data.get('data') or {})),
+    )
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({'template': t.to_dict()}), 201
+
+
+@bp.put('/templates/<int:template_id>')
+@login_required
+def update_template(user, template_id):
+    t = JobTemplate.query.get_or_404(template_id)
+    if t.owner_id != user.id and not perm.is_super(user):
+        return jsonify({'error': 'Only the owner can edit this template'}), 403
+    data = request.json or {}
+    if data.get('name', '').strip():
+        t.name = data['name'].strip()
+    if 'icon' in data:
+        t.icon = data['icon'] or '📦'
+    if 'shared' in data:
+        t.shared = bool(data['shared'])
+    if 'data' in data:
+        t.data = json.dumps(_clean_template_data(data['data'] or {}))
+    db.session.commit()
+    return jsonify({'template': t.to_dict()})
+
+
+@bp.delete('/templates/<int:template_id>')
+@login_required
+def delete_template(user, template_id):
+    t = JobTemplate.query.get_or_404(template_id)
+    if t.owner_id != user.id and not perm.is_super(user):
+        return jsonify({'error': 'Only the owner can delete this template'}), 403
+    db.session.delete(t)
     db.session.commit()
     return jsonify({'ok': True})

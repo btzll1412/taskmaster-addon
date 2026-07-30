@@ -37,7 +37,7 @@ export default function CompanyPage() {
         board = created.board
         await refreshBoards()
       }
-      openBoard(board.id)
+      navigate({ page: 'board', boardId: board.id, newJob: true })
     } catch (e) { showToast(e.message) }
   }
 
