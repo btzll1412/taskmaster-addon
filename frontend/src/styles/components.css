@@ -298,11 +298,17 @@
 
 /* ---------- Sub-items ---------- */
 .expander {
-  font-size: 15px; color: var(--text-muted); min-width: 32px; height: 28px;
-  border-radius: 6px; padding: 0 5px; text-align: left; flex-shrink: 0;
-  display: inline-flex; align-items: center;
+  font-size: 17px; color: var(--text-muted); min-width: 36px; height: 30px;
+  border-radius: 6px; padding: 0 6px; text-align: left; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .expander:hover { background: var(--hover); color: var(--primary); }
+/* jobs WITH sub-tasks: the arrow (+count) is always clearly visible */
+.expander-subs {
+  color: var(--primary); background: rgba(0, 115, 234, .10); font-weight: 700;
+}
+.expander-subs:hover { background: rgba(0, 115, 234, .20); }
+/* jobs without sub-tasks show no arrow; it peeks in on hover to add one */
 .expander-empty { opacity: 0; }
 .item-row:hover .expander-empty { opacity: .6; }
 .sub-item-row td { background: var(--surface-2); }
