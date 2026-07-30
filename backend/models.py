@@ -509,6 +509,31 @@ class AutomationRule(db.Model):
         }
 
 
+class AppSetting(db.Model):
+    """Free-form key/value store for instance-wide settings (login branding, …)."""
+    __tablename__ = 'app_settings'
+    key = db.Column(db.String(60), primary_key=True)
+    value = db.Column(db.Text, default='{}')
+
+    @staticmethod
+    def get_json(key, default=None):
+        row = db.session.get(AppSetting, key)
+        if not row:
+            return default
+        try:
+            return json.loads(row.value or '{}')
+        except ValueError:
+            return default
+
+    @staticmethod
+    def set_json(key, value):
+        row = db.session.get(AppSetting, key)
+        if row is None:
+            row = AppSetting(key=key)
+            db.session.add(row)
+        row.value = json.dumps(value)
+
+
 # Actions that form the permanent audit trail — they must survive the deletion
 # of the objects they describe.
 AUDIT_ACTION_LIST = ('board_deleted', 'item_deleted', 'group_deleted', 'column_deleted',

@@ -706,3 +706,4 @@ body.resizing-col { cursor: col-resize; user-select: none; }
   background: rgba(253, 171, 61, .15); border: 1px solid #fdab3d; color: var(--text);
   border-radius: 8px; padding: 10px 14px; font-size: 14px; margin-bottom: 10px;
 }
+.branding-icon-input { width: 58px !important; min-width: 58px !important; text-align: center; flex: none !important; }

@@ -3,7 +3,8 @@ import { api } from '../api'
 import { useStore } from '../store'
 
 export default function Login() {
-  const { setupRequired, init, sessionNotice } = useStore()
+  const { setupRequired, init, sessionNotice, branding } = useStore()
+  const b = branding || { title: 'TaskMaster', tagline: '', features: [], foot: '', welcome: 'Welcome back', welcome_sub: '' }
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
@@ -33,20 +34,22 @@ export default function Login() {
       <div className="auth-brand">
         <div className="auth-brand-inner">
           <div className="auth-logo"><span>✅</span></div>
-          <h1 className="auth-title">TaskMaster</h1>
-          <p className="auth-tagline">Jobs, boards and teams — one portal for you and your customers.</p>
-          <ul className="auth-features">
-            <li><span className="auth-feat-icon">📋</span> Track every job and sub-task, live</li>
-            <li><span className="auth-feat-icon">🔔</span> Automatic notifications on status changes</li>
-            <li><span className="auth-feat-icon">🔑</span> Each person sees exactly what they're given access to</li>
-          </ul>
+          <h1 className="auth-title">{b.title}</h1>
+          {b.tagline && <p className="auth-tagline">{b.tagline}</p>}
+          {b.features.length > 0 && (
+            <ul className="auth-features">
+              {b.features.map((f, i) => (
+                <li key={i}><span className="auth-feat-icon">{f.icon}</span> {f.text}</li>
+              ))}
+            </ul>
+          )}
         </div>
-        <div className="auth-brand-foot">Runs locally on your own server</div>
+        {b.foot && <div className="auth-brand-foot">{b.foot}</div>}
       </div>
 
       <div className="auth-form-side">
         <form className="auth-form" onSubmit={submit}>
-          <div className="auth-form-logo">✅ <strong>TaskMaster</strong></div>
+          <div className="auth-form-logo">✅ <strong>{b.title}</strong></div>
           {sessionNotice && <div className="auth-notice">⏳ {sessionNotice}</div>}
           {setupRequired ? (
             <>
@@ -69,8 +72,8 @@ export default function Login() {
             </>
           ) : (
             <>
-              <h2>Welcome back</h2>
-              <p className="auth-sub">Sign in to your workspace</p>
+              <h2>{b.welcome}</h2>
+              {b.welcome_sub && <p className="auth-sub">{b.welcome_sub}</p>}
               <label className="auth-label">Username</label>
               <input value={username} autoFocus autoComplete="username"
                 onChange={e => setUsername(e.target.value)} required />
