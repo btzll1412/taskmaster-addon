@@ -17,7 +17,7 @@ import TemplatesPage from './views/TemplatesPage'
 import ItemPanel from './components/ItemPanel'
 
 export default function App() {
-  const { authChecked, user, route, init, toast, panelItemId } = useStore()
+  const { authChecked, user, pendingUser, route, init, toast, panelItemId } = useStore()
 
   useEffect(() => { init() }, [])
   useEffect(() => {
@@ -28,8 +28,7 @@ export default function App() {
   }, [user?.id, user?.must_change_password])
 
   if (!authChecked) return <div className="app-loading">Loading…</div>
-  if (!user) return <Login />
-  if (user.must_change_password) return <ForcePasswordChange />
+  if (!user) return pendingUser ? <ForcePasswordChange /> : <Login />
 
   return (
     <div className="app">
