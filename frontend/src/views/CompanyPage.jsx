@@ -97,11 +97,8 @@ export default function CompanyPage() {
               {b.access === 'partial' && <span className="muted">🔒 limited</span>}
             </button>
           ))}
-          {can_create_board && (
-            <button className="board-card board-card-add" onClick={() => setNewBoard('direct')}>
-              <span className="board-card-icon">＋</span>
-              <span className="board-card-name">New job board</span>
-            </button>
+          {boards.filter(b => !b.archived).length === 0 && (
+            <span className="muted">No job boards yet{can_create_board ? ' — use ＋ Job board above.' : '.'}</span>
           )}
         </div>
       </section>

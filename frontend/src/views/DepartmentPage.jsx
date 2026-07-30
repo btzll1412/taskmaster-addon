@@ -71,13 +71,11 @@ export default function DepartmentPage() {
               {b.access === 'partial' && <span className="muted">🔒 limited</span>}
             </button>
           ))}
-          {can_create_board && (
-            <button className="board-card board-card-add" onClick={() => setNewBoard(true)}>
-              <span className="board-card-icon">＋</span>
-              <span className="board-card-name">New job board</span>
-            </button>
+          {boards.filter(b => !b.archived).length === 0 && (
+            <span className="muted">
+              {can_create_board ? 'No job boards yet — use ＋ Job board above.' : 'No boards shared with you here.'}
+            </span>
           )}
-          {boards.length === 0 && !can_create_board && <span className="muted">No boards shared with you here.</span>}
         </div>
       </section>
 
