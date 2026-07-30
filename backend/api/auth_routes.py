@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .. import permissions as perm
-from ..auth import current_user, login_required
+from ..auth import current_user, login_required, start_session
 from ..db import db
 from ..models import User
 
@@ -52,8 +52,7 @@ def setup():
     user.password_hash = generate_password_hash(password)
     db.session.commit()
 
-    session.permanent = True
-    session['user_id'] = user.id
+    start_session(user)
     return jsonify({'user': _user_payload(user)})
 
 
@@ -66,8 +65,7 @@ def login():
     if not user or not user.is_active or not user.password_hash \
             or not check_password_hash(user.password_hash, password):
         return jsonify({'error': 'Invalid username or password'}), 401
-    session.permanent = True
-    session['user_id'] = user.id
+    start_session(user)
     return jsonify({'user': _user_payload(user)})
 
 

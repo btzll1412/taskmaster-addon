@@ -38,7 +38,10 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 30  # 30 days
+    app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # fixed 7 days
+    # do NOT refresh the cookie on every request — the 7 days count from
+    # login, they don't slide with activity
+    app.config['SESSION_REFRESH_EACH_REQUEST'] = False
 
     CORS(app, supports_credentials=True)
     db.init_app(app)

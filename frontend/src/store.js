@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { api } from './api'
+import { api, setSessionExpiredHandler } from './api'
 
 export const useStore = create((set, get) => ({
   // auth
@@ -26,9 +26,23 @@ export const useStore = create((set, get) => ({
 
   toggleSidebarMobile() { set(s => ({ sidebarMobile: !s.sidebarMobile })) },
 
+  sessionNotice: null,
+
+  /** The 7-day session ran out (or the account was signed out server-side):
+   * drop straight to the login screen with a friendly notice. */
+  sessionExpired() {
+    if (!get().user) return
+    disconnectEvents()
+    set({
+      user: null, boardData: null, panelItemId: null,
+      sessionNotice: 'Your session expired — please sign in again.',
+    })
+  },
+
   async init() {
     const st = await api.get('/api/auth/status')
-    set({ authChecked: true, setupRequired: st.setup_required, user: st.user })
+    set({ authChecked: true, setupRequired: st.setup_required, user: st.user,
+          sessionNotice: st.user ? null : get().sessionNotice })
     // with a temporary password the rest of the API is locked until it's changed
     if (st.user && !st.user.must_change_password) await get().loadCore()
   },
@@ -136,6 +150,19 @@ export const useStore = create((set, get) => ({
     set({ user: null, boards: [], boardData: null, route: { page: 'home', boardId: null } })
   },
 }))
+
+// Any 401 outside the auth endpoints means the session is gone
+setSessionExpiredHandler(() => useStore.getState().sessionExpired())
+
+// Catch sessions that ran out while the tab sat open: re-check whenever
+// the user comes back to the tab
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && useStore.getState().user) {
+    api.get('/api/auth/status')
+      .then(st => { if (!st.authenticated) useStore.getState().sessionExpired() })
+      .catch(() => {})
+  }
+})
 
 // ---- Browser history: the back button navigates inside the app ----
 function pushHistory(state) {
