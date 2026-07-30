@@ -65,11 +65,7 @@ def create_app():
             return None
         from .auth import current_user
         from . import permissions as perm
-        u = current_user()
-        # a temporary password only lets you through the auth endpoints —
-        # everything else waits until the user picks their own password
-        if u and u.must_change_password and not request.path.startswith('/api/auth/'):
-            return jsonify({'error': 'You must set a new password first'}), 403
+        u = current_user()  # never returns a user with a pending temp password
         if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
             return None
         # viewers may still authenticate and manage their own session basics

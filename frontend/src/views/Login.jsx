@@ -19,7 +19,12 @@ export default function Login() {
       if (setupRequired) {
         await api.post('/api/auth/setup', { username, password, display_name: displayName })
       } else {
-        await api.post('/api/auth/login', { username, password })
+        const res = await api.post('/api/auth/login', { username, password })
+        if (res.must_change_password) {
+          // temp password accepted, but no session yet — go pick a real one
+          useStore.setState({ pendingUser: res.user, sessionNotice: null })
+          return
+        }
       }
       await init()
     } catch (err) {

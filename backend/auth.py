@@ -28,7 +28,9 @@ def current_user():
         session.pop('login_at', None)
         return None
     user = User.query.get(uid)
-    if user and user.is_active:
+    # a pending temporary password never carries a live session — including
+    # sessions minted before this rule existed
+    if user and user.is_active and not user.must_change_password:
         return user
     return None
 

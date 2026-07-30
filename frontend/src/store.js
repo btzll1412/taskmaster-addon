@@ -40,11 +40,15 @@ export const useStore = create((set, get) => ({
   },
 
   branding: null,
+  // set when a temp password was accepted but no real password chosen yet;
+  // memory-only on purpose: closing the tab returns to the login screen
+  pendingUser: null,
 
   async init() {
     const st = await api.get('/api/auth/status')
     set({ authChecked: true, setupRequired: st.setup_required, user: st.user,
           branding: st.branding || null,
+          pendingUser: st.user ? null : get().pendingUser,
           sessionNotice: st.user ? null : get().sessionNotice })
     // with a temporary password the rest of the API is locked until it's changed
     if (st.user && !st.user.must_change_password) await get().loadCore()

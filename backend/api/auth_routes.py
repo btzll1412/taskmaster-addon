@@ -124,6 +124,38 @@ def login():
     if not user or not user.is_active or not user.password_hash \
             or not check_password_hash(user.password_hash, password):
         return jsonify({'error': 'Invalid username or password'}), 401
+    if user.must_change_password:
+        # a temporary password does NOT start a session — it only unlocks the
+        # set-your-own-password step. Closing the tab lands back on login.
+        return jsonify({
+            'must_change_password': True,
+            'user': {'username': user.username, 'display_name': user.display_name},
+        })
+    start_session(user)
+    return jsonify({'user': _user_payload(user)})
+
+
+@bp.post('/first-password')
+def first_password():
+    """Turn a temporary password into the user's own password. Runs without a
+    session; the real session starts only after this succeeds."""
+    data = request.json or {}
+    username = (data.get('username') or '').strip().lower()
+    temp = data.get('temp_password') or ''
+    new = data.get('new_password') or ''
+    user = User.query.filter_by(username=username).first()
+    if not user or not user.is_active or not user.password_hash \
+            or not check_password_hash(user.password_hash, temp):
+        return jsonify({'error': 'The temporary password is incorrect'}), 401
+    if not user.must_change_password:
+        return jsonify({'error': 'This account has no pending password change — just sign in'}), 400
+    if len(new) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+    if new == temp:
+        return jsonify({'error': 'The new password must be different from the temporary one'}), 400
+    user.password_hash = generate_password_hash(new)
+    user.must_change_password = False
+    db.session.commit()
     start_session(user)
     return jsonify({'user': _user_payload(user)})
 
