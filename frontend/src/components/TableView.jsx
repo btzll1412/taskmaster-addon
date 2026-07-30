@@ -18,6 +18,30 @@ const COLUMN_TYPES = [
 export default function TableView({ items, canEdit, canCreate, canEditItems, usersFor }) {
   const { boardData, users, refreshBoard, openItem, showToast } = useStore()
   const { board, groups, columns } = boardData
+  const [widths, setWidths] = useState({})   // live drag-resize overrides
+  const colWidth = (col) => widths[col.id] ?? col.width
+
+  function startResize(col, e) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = colWidth(col)
+    const clamp = (w) => Math.max(70, Math.min(600, Math.round(w)))
+    const move = (ev) => setWidths(prev => ({ ...prev, [col.id]: clamp(startW + ev.clientX - startX) }))
+    const up = async (ev) => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.classList.remove('resizing-col')
+      const w = clamp(startW + ev.clientX - startX)
+      if (w !== col.width) {
+        try { await api.put(`/api/columns/${col.id}`, { width: w }); await refreshBoard() }
+        catch (err) { showToast(err.message) }
+      }
+    }
+    document.body.classList.add('resizing-col')
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
 
   async function act(promise) {
     try { await promise; await refreshBoard() } catch (e) { showToast(e.message) }
@@ -37,7 +61,7 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, use
           items={items.filter(i => i.group_id === group.id)}
           groups={groups} board={board} canEdit={canEdit}
           act={act} setValue={setValue} updateColumnSettings={updateColumnSettings}
-          openItem={openItem} />
+          openItem={openItem} colWidth={colWidth} startResize={startResize} />
       ))}
       {canEdit && (
         <button className="add-group-btn"
@@ -50,7 +74,7 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, use
 }
 
 function GroupTable({ group, groups, columns, items, users, usersFor, board, canEdit,
-  canCreate, canEditItems, act, setValue, updateColumnSettings, openItem }) {
+  canCreate, canEditItems, act, setValue, updateColumnSettings, openItem, colWidth, startResize }) {
   const [newItem, setNewItem] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [expanded, setExpanded] = useState(() => new Set())
@@ -105,7 +129,8 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
               <tr>
                 <th className="col-name">Item</th>
                 {columns.map(col => (
-                  <ColumnHeader key={col.id} col={col} act={act} canEdit={canEdit} />
+                  <ColumnHeader key={col.id} col={col} act={act} canEdit={canEdit}
+                    width={colWidth(col)} startResize={startResize} />
                 ))}
                 <th className="col-add">{canEdit && <AddColumnButton board={board} act={act} />}</th>
               </tr>
@@ -115,7 +140,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
                 <React.Fragment key={item.id}>
                   <ItemRow item={item} columns={columns} users={usersFor ? usersFor(item) : users} groups={groups}
                     canEdit={canEdit} canEditItems={canEditItems} act={act} setValue={setValue}
-                    updateColumnSettings={updateColumnSettings} openItem={openItem}
+                    updateColumnSettings={updateColumnSettings} openItem={openItem} colWidth={colWidth}
                     subCount={(subsByParent[item.id] || []).length}
                     isExpanded={expanded.has(item.id)}
                     onToggleExpand={() => toggleExpand(item.id)} />
@@ -126,7 +151,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
                           groups={groups} canEdit={canEdit} canEditItems={canEditItems}
                           act={act} setValue={setValue}
                           updateColumnSettings={updateColumnSettings} openItem={openItem}
-                          isSub />
+                          colWidth={colWidth} isSub />
                       ))}
                       {canCreate && (
                         <tr className="add-item-row sub-row">
@@ -170,7 +195,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
 }
 
 function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, setValue,
-  updateColumnSettings, openItem, isSub, subCount = 0, isExpanded, onToggleExpand }) {
+  updateColumnSettings, openItem, colWidth, isSub, subCount = 0, isExpanded, onToggleExpand }) {
   return (
     <tr className={`item-row ${isSub ? 'sub-item-row' : ''}`}>
       <td className="col-name">
@@ -191,7 +216,7 @@ function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, set
         </div>
       </td>
       {columns.map(col => (
-        <td key={col.id} style={{ width: col.width, minWidth: col.width }}>
+        <td key={col.id} style={{ width: colWidth ? colWidth(col) : col.width, minWidth: colWidth ? colWidth(col) : col.width }}>
           <Cell column={col} value={item.values[String(col.id)]} users={users}
             disabled={!canEditItems}
             onChange={v => setValue(item, col, v)}
@@ -245,12 +270,13 @@ function ItemMenu({ item, groups, act, canEdit, isSub }) {
   )
 }
 
-function ColumnHeader({ col, act, canEdit }) {
+function ColumnHeader({ col, act, canEdit, width, startResize }) {
   const [menu, setMenu] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const anchor = useRef(null)
+  const w = width ?? col.width
   return (
-    <th style={{ width: col.width, minWidth: col.width }}>
+    <th style={{ width: w, minWidth: w }}>
       <div className="col-head" ref={anchor}>
         {renaming && canEdit ? (
           <input autoFocus defaultValue={col.title} className="col-rename"
@@ -270,6 +296,10 @@ function ColumnHeader({ col, act, canEdit }) {
           </OverlayPopover>
         )}
       </div>
+      {canEdit && startResize && (
+        <div className="col-resizer" title="Drag to resize"
+          onPointerDown={e => startResize(col, e)} />
+      )}
     </th>
   )
 }

@@ -276,7 +276,7 @@ def update_column(user, column_id):
     if 'settings' in data:
         col.settings = json.dumps(data['settings'])
     if 'width' in data:
-        col.width = max(70, min(500, int(data['width'])))
+        col.width = max(70, min(600, int(data['width'])))
     if 'position' in data:
         col.position = float(data['position'])
     db.session.commit()

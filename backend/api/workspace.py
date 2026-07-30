@@ -546,24 +546,32 @@ def delete_automation(user, rule_id):
 
 # ---- Job templates ----
 
-def _clean_template_data(data):
-    """Keep only the shapes apply_template understands."""
-    values = []
-    for spec in (data.get('values') or [])[:30]:
+def _clean_specs(specs):
+    out = []
+    for spec in (specs or [])[:30]:
         if not isinstance(spec, dict) or not spec.get('type'):
             continue
         keep = {'type': str(spec['type']), 'title': str(spec.get('title') or '')}
-        for k in ('label', 'text', 'number'):
+        for k in ('label', 'text', 'number', 'days'):
             if spec.get(k) not in (None, ''):
                 keep[k] = spec[k]
         if len(keep) > 2:
-            values.append(keep)
+            out.append(keep)
+    return out
+
+
+def _clean_template_data(data):
+    """Keep only the shapes apply_template understands."""
     subtasks = []
     for sub in (data.get('subtasks') or [])[:100]:
-        name = ((sub.get('name') if isinstance(sub, dict) else str(sub)) or '').strip()
+        if isinstance(sub, dict):
+            name = (sub.get('name') or '').strip()
+            values = _clean_specs(sub.get('values'))
+        else:
+            name, values = str(sub).strip(), []
         if name:
-            subtasks.append({'name': name[:500]})
-    return {'values': values, 'subtasks': subtasks}
+            subtasks.append({'name': name[:500], 'values': values})
+    return {'values': _clean_specs(data.get('values')), 'subtasks': subtasks}
 
 
 @bp.get('/templates')

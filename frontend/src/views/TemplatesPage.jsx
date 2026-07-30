@@ -1,10 +1,20 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
-import { Modal, EmojiPicker } from '../components/ui'
+import { Modal, EmojiPicker, OverlayPopover } from '../components/ui'
 
-const STATUS_CHOICES = ['Not Started', 'Working on it', 'Stuck', 'Done']
-const PRIORITY_CHOICES = ['Critical', 'High', 'Medium', 'Low']
+const STATUS_LABELS = [
+  { label: 'Not Started', color: '#c4c4c4' },
+  { label: 'Working on it', color: '#fdab3d' },
+  { label: 'Stuck', color: '#e2445c' },
+  { label: 'Done', color: '#00c875' },
+]
+const PRIORITY_LABELS = [
+  { label: 'Critical', color: '#333333' },
+  { label: 'High', color: '#401694' },
+  { label: 'Medium', color: '#5559df' },
+  { label: 'Low', color: '#579bfc' },
+]
 
 export default function TemplatesPage() {
   const { showToast } = useStore()
@@ -100,29 +110,102 @@ function TemplateCard({ t, mine, onEdit, onShare, onDelete }) {
   )
 }
 
+/** One editable row of the designer: {name?, status, priority, days, text}. */
+function rowFromSpecs(specs) {
+  const by = (t) => (specs || []).find(v => v.type === t) || {}
+  return {
+    status: by('status').label || '',
+    priority: by('priority').label || '',
+    days: by('date').days ?? '',
+    text: by('text').text || '',
+  }
+}
+
+function specsFromRow(row) {
+  return [
+    ...(row.status ? [{ title: 'Status', type: 'status', label: row.status }] : []),
+    ...(row.priority ? [{ title: 'Priority', type: 'priority', label: row.priority }] : []),
+    ...(row.days !== '' && row.days !== null ? [{ title: 'Due date', type: 'date', days: Number(row.days) }] : []),
+    ...(row.text ? [{ title: 'Notes', type: 'text', text: row.text }] : []),
+  ]
+}
+
+/** Colored status/priority chip that opens an overlay label picker — same feel as a board cell. */
+function ChipPicker({ value, labels, placeholder, onChange }) {
+  const [open, setOpen] = useState(false)
+  const anchor = useRef(null)
+  const current = labels.find(l => l.label === value)
+  return (
+    <div className="topbar-anchor" ref={anchor}>
+      <button type="button"
+        className={`tpl-chip ${current ? '' : 'tpl-chip-empty'}`}
+        style={current ? { background: current.color } : undefined}
+        onClick={() => setOpen(true)}>
+        {current ? current.label : placeholder}
+      </button>
+      {open && (
+        <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={180}>
+          {labels.map(l => (
+            <button key={l.label} type="button" className="menu-item"
+              onClick={() => { onChange(l.label); setOpen(false) }}>
+              <span className="tpl-chip" style={{ background: l.color, minWidth: 0, padding: '3px 10px' }}>{l.label}</span>
+            </button>
+          ))}
+          <hr className="menu-sep" />
+          <button type="button" className="menu-item" onClick={() => { onChange(''); setOpen(false) }}>✕ Clear</button>
+        </OverlayPopover>
+      )}
+    </div>
+  )
+}
+
+function DesignerRow({ row, onChange, name, onRemove, isJob }) {
+  const set = (k) => (v) => onChange({ ...row, [k]: v })
+  return (
+    <tr className={isJob ? 'template-job-row' : ''}>
+      <td>{name}</td>
+      <td><ChipPicker value={row.status} labels={STATUS_LABELS} placeholder="＋ Status" onChange={set('status')} /></td>
+      <td><ChipPicker value={row.priority} labels={PRIORITY_LABELS} placeholder="＋ Priority" onChange={set('priority')} /></td>
+      <td>
+        <input type="number" className="template-days" min="0" max="365" placeholder="—"
+          title="Due this many days after the job is created"
+          value={row.days} onChange={e => set('days')(e.target.value)} />
+      </td>
+      <td><input placeholder="＋ Note" value={row.text} onChange={e => set('text')(e.target.value)} /></td>
+      <td>{onRemove && <button type="button" className="icon-btn" title="Remove sub-task" onClick={onRemove}>✕</button>}</td>
+    </tr>
+  )
+}
+
 export function TemplateEditor({ template, onClose, onSaved, showToast }) {
   const [name, setName] = useState(template?.name || '')
   const [icon, setIcon] = useState(template?.icon || '📦')
-  const [status, setStatus] = useState(template?.data.values?.find(v => v.type === 'status')?.label || '')
-  const [priority, setPriority] = useState(template?.data.values?.find(v => v.type === 'priority')?.label || '')
-  const [subtasks, setSubtasks] = useState((template?.data.subtasks || []).map(s => s.name))
+  const [job, setJob] = useState(rowFromSpecs(template?.data.values))
+  const [subs, setSubs] = useState((template?.data.subtasks || [])
+    .map(s => ({ name: s.name, ...rowFromSpecs(s.values) })))
   const [newSub, setNewSub] = useState('')
 
   function addSub() {
     const v = newSub.trim()
     if (!v) return
-    setSubtasks([...subtasks, v])
+    setSubs([...subs, { name: v, status: '', priority: '', days: '', text: '' }])
     setNewSub('')
+  }
+
+  function moveSub(i, dir) {
+    const j = i + dir
+    if (j < 0 || j >= subs.length) return
+    const next = [...subs]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setSubs(next)
   }
 
   async function save() {
     if (!name.trim()) { showToast('Template name is required'); return }
     const data = {
-      values: [
-        ...(status ? [{ title: 'Status', type: 'status', label: status }] : []),
-        ...(priority ? [{ title: 'Priority', type: 'priority', label: priority }] : []),
-      ],
-      subtasks: subtasks.map(n => ({ name: n })),
+      values: specsFromRow(job),
+      subtasks: subs.filter(s => s.name.trim())
+        .map(s => ({ name: s.name.trim(), values: specsFromRow(s) })),
     }
     try {
       if (template) await api.put(`/api/templates/${template.id}`, { name: name.trim(), icon, data })
@@ -133,48 +216,57 @@ export function TemplateEditor({ template, onClose, onSaved, showToast }) {
 
   return (
     <Modal title={template ? `Edit template — ${template.name}` : 'New job template'} onClose={onClose} wide>
-      <div className="form-col">
+      <div className="template-modal-body">
         <div className="form-row">
           <EmojiPicker value={icon} onChange={setIcon} />
           <input placeholder="Template name (e.g. Camera installation)" value={name} autoFocus
             onChange={e => setName(e.target.value)} />
         </div>
-        <div className="form-row">
-          <div className="form-col-half">
-            <label>Default status</label>
-            <select value={status} onChange={e => setStatus(e.target.value)}>
-              <option value="">— none —</option>
-              {STATUS_CHOICES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="form-col-half">
-            <label>Default priority</label>
-            <select value={priority} onChange={e => setPriority(e.target.value)}>
-              <option value="">— none —</option>
-              {PRIORITY_CHOICES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
 
-        <label>Sub-tasks <span className="muted">(every job started from this template gets its own copy)</span></label>
-        <div className="template-subs">
-          {subtasks.map((s, i) => (
-            <div key={i} className="template-sub-row">
-              <span className="sub-indent">↳</span>
-              <input value={s} onChange={e => {
-                const next = [...subtasks]; next[i] = e.target.value; setSubtasks(next)
-              }} />
-              <button className="icon-btn" title="Remove" onClick={() => setSubtasks(subtasks.filter((_, j) => j !== i))}>✕</button>
-            </div>
-          ))}
-          <div className="template-sub-row">
-            <span className="sub-indent">＋</span>
-            <input placeholder="Add a sub-task (e.g. Order cameras) and press Enter" value={newSub}
-              onChange={e => setNewSub(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSub() } }} />
-            <button className="btn btn-small" onClick={addSub}>Add</button>
-          </div>
+        <div className="template-table-wrap">
+          <table className="template-table">
+            <thead>
+              <tr>
+                <th>Item</th><th>Status</th><th>Priority</th><th>Due in (days)</th><th>Notes</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <DesignerRow row={job} onChange={setJob} isJob
+                name={<span>📌 The job itself</span>} />
+              {subs.map((s, i) => (
+                <DesignerRow key={i} row={s}
+                  onChange={next => setSubs(subs.map((x, j) => j === i ? next : x))}
+                  onRemove={() => setSubs(subs.filter((_, j) => j !== i))}
+                  name={
+                    <span className="tpl-sub-name">
+                      <span className="sub-indent">↳</span>
+                      <input value={s.name}
+                        onChange={e => setSubs(subs.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                      <button type="button" className="icon-btn" title="Move up" disabled={i === 0}
+                        onClick={() => moveSub(i, -1)}>↑</button>
+                      <button type="button" className="icon-btn" title="Move down" disabled={i === subs.length - 1}
+                        onClick={() => moveSub(i, 1)}>↓</button>
+                    </span>
+                  } />
+              ))}
+              <tr>
+                <td colSpan={6}>
+                  <div className="tpl-sub-name">
+                    <span className="sub-indent">＋</span>
+                    <input placeholder="Add a sub-task (e.g. Order cameras) and press Enter" value={newSub}
+                      onChange={e => setNewSub(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSub() } }} />
+                    <button type="button" className="btn btn-small" onClick={addSub}>Add</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
+        <p className="muted" style={{ margin: 0 }}>
+          "Due in" sets the due date that many days after the job is created.
+          Every job started from this template gets its own copy of everything above.
+        </p>
 
         <div><button className="btn btn-primary" onClick={save}>{template ? 'Save template' : 'Create template'}</button></div>
       </div>
