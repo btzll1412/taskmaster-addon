@@ -38,7 +38,6 @@ export default function Login() {
           <ul className="auth-features">
             <li><span className="auth-feat-icon">📋</span> Track every job and sub-task, live</li>
             <li><span className="auth-feat-icon">🔔</span> Automatic notifications on status changes</li>
-            <li><span className="auth-feat-icon">🔑</span> Each person sees exactly what they're given access to</li>
           </ul>
         </div>
         <div className="auth-brand-foot">Runs locally on your own server</div>
