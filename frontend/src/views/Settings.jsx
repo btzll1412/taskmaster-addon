@@ -28,6 +28,11 @@ export default function Settings() {
           <button className={tab === 'roles' ? 'active' : ''} onClick={() => setTab('roles')}>
             <span className="tab-icon">🎭</span> Roles
           </button>
+          {user.role === 'super_admin' && (
+            <button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
+              <span className="tab-icon">🖥️</span> Login screen
+            </button>
+          )}
         </div>
       )}
 
@@ -41,7 +46,105 @@ export default function Settings() {
       )}
       {tab === 'automations' && isAdmin && <AutomationsSection user={user} showToast={showToast} />}
       {tab === 'roles' && canRoles && <RolesSection user={user} workspace={workspace} showToast={showToast} />}
+      {tab === 'login' && user.role === 'super_admin' && <LoginScreenSection showToast={showToast} />}
     </div>
+  )
+}
+
+function LoginScreenSection({ showToast }) {
+  const [b, setB] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.get('/api/auth/branding').then(d => setB(d.branding)).catch(e => showToast(e.message))
+  }, [])
+
+  if (!b) return <section className="settings-card"><div className="muted">Loading…</div></section>
+  const set = (k) => (e) => setB({ ...b, [k]: e.target.value })
+  const setFeature = (i, k, v) =>
+    setB({ ...b, features: b.features.map((f, j) => j === i ? { ...f, [k]: v } : f) })
+
+  function move(i, dir) {
+    const j = i + dir
+    if (j < 0 || j >= b.features.length) return
+    const next = [...b.features]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setB({ ...b, features: next })
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      const d = await api.put('/api/auth/branding', b)
+      setB(d.branding)
+      useStore.setState({ branding: d.branding })
+      showToast('Login screen saved — sign out to see it')
+    } catch (e) { showToast(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <section className="settings-card">
+      <h3>🖥️ Login screen</h3>
+      <p className="muted">
+        Everything written on the sign-in page is yours to change. Empty fields are simply hidden.
+      </p>
+      <div className="form-col">
+        <div className="form-row">
+          <div className="form-col-half">
+            <label>Title</label>
+            <input value={b.title} onChange={set('title')} maxLength={60} />
+          </div>
+          <div className="form-col-half">
+            <label>Bottom line (left panel)</label>
+            <input value={b.foot} onChange={set('foot')} maxLength={120} />
+          </div>
+        </div>
+        <label>Tagline</label>
+        <textarea rows={2} value={b.tagline} onChange={set('tagline')} />
+
+        <label>Feature lines <span className="muted">(up to 8 — icon + text, reorder with ↑↓)</span></label>
+        <div className="template-subs">
+          {b.features.map((f, i) => (
+            <div key={i} className="template-sub-row">
+              <input className="branding-icon-input" value={f.icon} maxLength={4}
+                onChange={e => setFeature(i, 'icon', e.target.value)} title="Icon (emoji)" />
+              <input value={f.text} placeholder="Feature text"
+                onChange={e => setFeature(i, 'text', e.target.value)} />
+              <button type="button" className="icon-btn" title="Move up" disabled={i === 0}
+                onClick={() => move(i, -1)}>↑</button>
+              <button type="button" className="icon-btn" title="Move down" disabled={i === b.features.length - 1}
+                onClick={() => move(i, 1)}>↓</button>
+              <button type="button" className="icon-btn" title="Remove line"
+                onClick={() => setB({ ...b, features: b.features.filter((_, j) => j !== i) })}>✕</button>
+            </div>
+          ))}
+          {b.features.length < 8 && (
+            <div>
+              <button type="button" className="btn btn-small"
+                onClick={() => setB({ ...b, features: [...b.features, { icon: '⭐', text: '' }] })}>
+                ＋ Add line
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="form-row">
+          <div className="form-col-half">
+            <label>Sign-in heading</label>
+            <input value={b.welcome} onChange={set('welcome')} maxLength={80} />
+          </div>
+          <div className="form-col-half">
+            <label>Sign-in sub-heading</label>
+            <input value={b.welcome_sub} onChange={set('welcome_sub')} maxLength={120} />
+          </div>
+        </div>
+
+        <div><button className="btn btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save login screen'}
+        </button></div>
+      </div>
+    </section>
   )
 }
 

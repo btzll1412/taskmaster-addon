@@ -13,6 +13,64 @@ def _setup_required():
     return User.query.filter(User.password_hash.isnot(None)).first() is None
 
 
+# What the login screen says — the super admin can rewrite all of it
+DEFAULT_BRANDING = {
+    'title': 'TaskMaster',
+    'tagline': 'Jobs, boards and teams — one portal for you and your customers.',
+    'features': [
+        {'icon': '📋', 'text': 'Track every job and sub-task, live'},
+        {'icon': '🔔', 'text': 'Automatic notifications on status changes'},
+    ],
+    'foot': 'Runs locally on your own server',
+    'welcome': 'Welcome back',
+    'welcome_sub': 'Sign in to your workspace',
+}
+
+
+def _branding():
+    from ..models import AppSetting
+    saved = AppSetting.get_json('login_branding') or {}
+    out = dict(DEFAULT_BRANDING)
+    for k in out:
+        if k in saved:
+            out[k] = saved[k]
+    return out
+
+
+def _clean_branding(data):
+    def s(v, n=300):
+        return str(v or '').strip()[:n]
+    features = []
+    for f in (data.get('features') or [])[:8]:
+        if isinstance(f, dict) and s(f.get('text')):
+            features.append({'icon': s(f.get('icon'), 8) or '•', 'text': s(f.get('text'))})
+    return {
+        'title': s(data.get('title'), 60) or 'TaskMaster',
+        'tagline': s(data.get('tagline')),
+        'features': features,
+        'foot': s(data.get('foot'), 120),
+        'welcome': s(data.get('welcome'), 80) or 'Welcome back',
+        'welcome_sub': s(data.get('welcome_sub'), 120),
+    }
+
+
+@bp.get('/branding')
+def get_branding():
+    """Public: the login screen loads before anyone is signed in."""
+    return jsonify({'branding': _branding()})
+
+
+@bp.put('/branding')
+@login_required
+def update_branding(user):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can change the login screen'}), 403
+    from ..models import AppSetting
+    AppSetting.set_json('login_branding', _clean_branding(request.json or {}))
+    db.session.commit()
+    return jsonify({'branding': _branding()})
+
+
 def _user_payload(user):
     d = user.to_dict(include_private=True)
     d['capabilities'] = sorted(perm.caps(user))
@@ -26,6 +84,7 @@ def status():
         'setup_required': _setup_required(),
         'authenticated': user is not None,
         'user': _user_payload(user) if user else None,
+        'branding': _branding(),
     })
 
 
