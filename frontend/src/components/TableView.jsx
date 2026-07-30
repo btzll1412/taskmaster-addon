@@ -202,7 +202,7 @@ function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, set
         <div className="item-name-cell">
           {isSub && <span className="sub-indent">↳</span>}
           {!isSub && (
-            <button className={`expander ${subCount > 0 ? '' : 'expander-empty'}`}
+            <button className={`expander ${subCount > 0 ? 'expander-subs' : 'expander-empty'}`}
               title={subCount > 0 ? `${subCount} sub-task${subCount === 1 ? '' : 's'}` : 'Add sub-tasks'}
               onClick={onToggleExpand}>
               {isExpanded ? '▾' : subCount > 0 ? `▸${subCount}` : '▸'}
