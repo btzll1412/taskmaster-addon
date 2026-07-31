@@ -124,7 +124,9 @@ function UsersTab() {
               <strong>{u.display_name}</strong>
               <span className="muted">@{u.username}{u.company_name ? ` · ${u.company_name}` : ' · IT staff'}</span>
             </div>
-            {!u.has_password && <span className="pw-warning" title="Cannot sign in until a password is set">⚠️ No password</span>}
+            {!u.has_password && (u.email
+              ? <span className="pw-warning" title="Invitation sent — waiting for them to finish setting up">✉️ Invite pending</span>
+              : <span className="pw-warning" title="Cannot sign in until a password is set">⚠️ No password</span>)}
             {canManage(u) && u.id !== user.id ? (
               <select className="role-select" value={u.role} onChange={e => setRole(u, e.target.value)}>
                 {u.company_id ? (
@@ -150,8 +152,16 @@ function UsersTab() {
                 {u.role !== 'super_admin' && (
                   <button className="btn btn-small" onClick={() => setGrantsUser(u)}>🔑 Access</button>
                 )}
-                <button className="btn btn-small" title="Set a new temporary password — they pick their own on next login"
-                  onClick={() => setPwUser(u)}>🔑 Reset password</button>
+                {!u.has_password && u.email ? (
+                  <button className="btn btn-small" title="Send the invitation email again"
+                    onClick={async () => {
+                      try { await api.post(`/api/users/${u.id}/invite`); showToast(`Invitation re-sent to ${u.email}`) }
+                      catch (e) { showToast(e.message) }
+                    }}>✉️ Resend invite</button>
+                ) : (
+                  <button className="btn btn-small" title="Set a new temporary password — they pick their own on next login"
+                    onClick={() => setPwUser(u)}>🔑 Reset password</button>
+                )}
                 <button className="btn btn-small" onClick={() => toggleActive(u)} disabled={u.id === user.id}>
                   {u.is_active ? 'Deactivate' : 'Activate'}
                 </button>
@@ -175,8 +185,9 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
   const [roles, setRoles] = useState([])
   useEffect(() => { api.get('/api/roles').then(d => setRoles(d.roles)).catch(() => {}) }, [])
   const isSuper = me.role === 'super_admin'
+  const [mode, setMode] = useState('invite')  // invite (by email) | manual
   const [form, setForm] = useState({
-    username: '', display_name: '', password: '', color: '#579bfc',
+    username: '', display_name: '', password: '', email: '', color: '#579bfc',
     company_id: me.role === 'company_admin' ? String(me.company_id)
       : defaultCompanyId ? String(defaultCompanyId) : '',
     roleChoice: 'level:member',
@@ -203,10 +214,14 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
 
   async function submit(e) {
     e.preventDefault()
-    const payload = {
-      username: form.username, display_name: form.display_name,
-      password: form.password, color: form.color,
-      company_id: targetCompany,
+    const payload = { company_id: targetCompany }
+    if (mode === 'invite') {
+      payload.email = form.email
+    } else {
+      payload.username = form.username
+      payload.display_name = form.display_name
+      payload.password = form.password
+      payload.color = form.color
     }
     if (form.roleChoice.startsWith('custom:')) payload.custom_role_id = Number(form.roleChoice.slice(7))
     else payload.role = form.roleChoice.slice(6)
@@ -215,26 +230,48 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
       else payload.company_ids = form.company_ids
     }
     try {
-      await api.post('/api/users', payload)
+      await api.post(mode === 'invite' ? '/api/users/invite' : '/api/users', payload)
+      if (mode === 'invite') showToast(`Invitation sent to ${form.email}`)
       onDone()
     } catch (err) { showToast(err.message) }
   }
 
   return (
-    <Modal title="Create user" onClose={onClose} wide>
+    <Modal title="Add user" onClose={onClose} wide>
       <form className="form-col" onSubmit={submit}>
-        <div className="form-row">
-          <div className="form-col-half">
-            <label>Username</label>
-            <input value={form.username} onChange={set('username')} required autoFocus />
-          </div>
-          <div className="form-col-half">
-            <label>Display name</label>
-            <input value={form.display_name} onChange={set('display_name')} />
-          </div>
+        <div className="view-tabs new-user-tabs">
+          <button type="button" className={mode === 'invite' ? 'active' : ''}
+            onClick={() => setMode('invite')}>✉️ Invite by email</button>
+          <button type="button" className={mode === 'manual' ? 'active' : ''}
+            onClick={() => setMode('manual')}>✍️ Create manually</button>
         </div>
-        <label>Temporary password <span className="muted">(min. 6 — they must pick their own on first login)</span></label>
-        <input type="password" value={form.password} onChange={set('password')} required minLength={6} />
+
+        {mode === 'invite' ? (
+          <>
+            <label>Email address</label>
+            <input type="email" placeholder="person@customer.com" value={form.email}
+              onChange={set('email')} required autoFocus />
+            <p className="muted invite-hint">
+              They'll get an email with a link to pick their own username, display name and
+              password — nothing for you to hand over. The link lasts 7 days.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="form-row">
+              <div className="form-col-half">
+                <label>Username</label>
+                <input value={form.username} onChange={set('username')} required autoFocus />
+              </div>
+              <div className="form-col-half">
+                <label>Display name</label>
+                <input value={form.display_name} onChange={set('display_name')} />
+              </div>
+            </div>
+            <label>Temporary password <span className="muted">(min. 6 — they must pick their own on first login)</span></label>
+            <input type="password" value={form.password} onChange={set('password')} required minLength={6} />
+          </>
+        )}
 
         {me.role !== 'company_admin' && (
           <>
@@ -285,7 +322,9 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
           </div>
         )}
 
-        <button className="btn btn-primary">Create user</button>
+        <button className="btn btn-primary">
+          {mode === 'invite' ? '✉️ Send invitation' : 'Create user'}
+        </button>
       </form>
     </Modal>
   )

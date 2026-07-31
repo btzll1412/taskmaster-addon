@@ -1,10 +1,14 @@
+import hashlib
+import secrets
+from datetime import datetime, timedelta
+
 from flask import Blueprint, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .. import permissions as perm
 from ..auth import current_user, login_required, start_session
 from ..db import db
-from ..models import User
+from ..models import AuthToken, User
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -52,6 +56,132 @@ def _clean_branding(data):
         'welcome': s(data.get('welcome'), 80) or 'Welcome back',
         'welcome_sub': s(data.get('welcome_sub'), 120),
     }
+
+
+# ---- Email token flows: forgot password + invitations ----
+
+TOKEN_LIFETIMES = {'reset': timedelta(hours=1), 'invite': timedelta(days=7)}
+
+
+def _hash_token(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def issue_token(user, kind):
+    """Create a fresh single-use token, retiring any previous ones of the kind."""
+    AuthToken.query.filter_by(user_id=user.id, kind=kind, used=False).update({'used': True})
+    token = secrets.token_urlsafe(32)
+    db.session.add(AuthToken(
+        kind=kind, user_id=user.id, token_hash=_hash_token(token),
+        expires_at=datetime.utcnow() + TOKEN_LIFETIMES[kind],
+    ))
+    return token
+
+
+def consume_token(token, kind, mark_used=True):
+    """Return the token's user if valid, else None."""
+    if not token:
+        return None
+    row = AuthToken.query.filter_by(token_hash=_hash_token(token), kind=kind,
+                                    used=False).first()
+    if not row or row.expires_at < datetime.utcnow():
+        return None
+    user = db.session.get(User, row.user_id)
+    if not user or not user.is_active:
+        return None
+    if mark_used:
+        row.used = True
+    return user
+
+
+def _link_base():
+    from .. import emailer
+    base = (emailer.get_config().get('base_url') or '').strip()
+    return base.rstrip('/') if base else request.host_url.rstrip('/')
+
+
+@bp.post('/forgot')
+def forgot_password():
+    """Email a reset link. Always answers OK — never reveals whether the
+    address belongs to an account."""
+    from .. import emailer
+    if not emailer.is_ready():
+        return jsonify({'error': 'Password reset by email is not set up — ask your administrator'}), 400
+    email = ((request.json or {}).get('email') or '').strip().lower()
+    if not email:
+        return jsonify({'error': 'Enter your email address'}), 400
+    user = User.query.filter(db.func.lower(User.email) == email,
+                             User.is_active.is_(True),
+                             User.password_hash.isnot(None)).first()
+    if user:
+        token = issue_token(user, 'reset')
+        db.session.commit()
+        from flask import current_app
+        emailer.send_async(
+            current_app._get_current_object(), user.email,
+            'Reset your TaskMaster password',
+            f'Hi {user.display_name},\n\n'
+            f'Someone (hopefully you) asked to reset your TaskMaster password.\n'
+            f'Click the link below to choose a new one. The link works once and '
+            f'expires in 1 hour.\n\n{_link_base()}/?reset={token}\n\n'
+            f'If this wasn\'t you, you can ignore this email - nothing changes.')
+    return jsonify({'ok': True, 'message': 'If that email belongs to an account, a reset link is on its way.'})
+
+
+@bp.post('/reset')
+def reset_password():
+    data = request.json or {}
+    new = data.get('new_password') or ''
+    if len(new) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+    user = consume_token(data.get('token'), 'reset')
+    if not user:
+        return jsonify({'error': 'This reset link is invalid or has expired — request a new one'}), 400
+    user.password_hash = generate_password_hash(new)
+    user.must_change_password = False
+    db.session.commit()
+    start_session(user)
+    return jsonify({'user': _user_payload(user)})
+
+
+@bp.get('/invite-info')
+def invite_info():
+    """What the invite page shows before the person fills anything in."""
+    user = consume_token(request.args.get('token'), 'invite', mark_used=False)
+    if not user:
+        return jsonify({'error': 'This invitation is invalid or has expired — ask for a new one'}), 404
+    from ..models import Company
+    company = db.session.get(Company, user.company_id) if user.company_id else None
+    return jsonify({'invite': {
+        'email': user.email,
+        'company_name': company.name if company else None,
+    }})
+
+
+@bp.post('/accept-invite')
+def accept_invite():
+    data = request.json or {}
+    username = (data.get('username') or '').strip().lower()
+    display_name = (data.get('display_name') or '').strip()
+    password = data.get('password') or ''
+    if not username:
+        return jsonify({'error': 'Pick a username'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    user = consume_token(data.get('token'), 'invite', mark_used=False)
+    if not user:
+        return jsonify({'error': 'This invitation is invalid or has expired — ask for a new one'}), 400
+    taken = User.query.filter(User.username == username, User.id != user.id).first()
+    if taken:
+        return jsonify({'error': 'That username is taken — pick another'}), 409
+    consume_token(data.get('token'), 'invite')  # mark used now that input is valid
+    user.username = username
+    user.display_name = display_name or username
+    user.password_hash = generate_password_hash(password)
+    user.must_change_password = False
+    db.session.commit()
+    start_session(user)
+    return jsonify({'user': _user_payload(user)})
 
 
 @bp.get('/branding')

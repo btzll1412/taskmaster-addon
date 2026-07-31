@@ -11,6 +11,20 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [forgot, setForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotMsg, setForgotMsg] = useState(null)
+
+  async function sendReset(e) {
+    e.preventDefault()
+    setForgotMsg(null)
+    try {
+      const r = await api.post('/api/auth/forgot', { email: forgotEmail })
+      setForgotMsg({ ok: true, text: r.message })
+    } catch (err) {
+      setForgotMsg({ ok: false, text: err.message })
+    }
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -97,11 +111,28 @@ export default function Login() {
           <button className="btn btn-primary btn-block auth-submit" disabled={busy}>
             {busy ? 'Signing in…' : setupRequired ? 'Create admin account' : 'Sign in'}
           </button>
-          <p className="auth-foot muted">
-            {setupRequired
-              ? 'You can add companies, boards and users right after this step.'
-              : 'Forgot your password? Ask your administrator for a reset.'}
-          </p>
+          {setupRequired ? (
+            <p className="auth-foot muted">You can add companies, boards and users right after this step.</p>
+          ) : !forgot ? (
+            <p className="auth-foot muted">
+              <button type="button" className="link-btn" onClick={() => setForgot(true)}>
+                Forgot your password?
+              </button>
+            </p>
+          ) : (
+            <div className="forgot-box">
+              <label className="auth-label">Email me a reset link</label>
+              <div className="form-row">
+                <input type="email" placeholder="you@company.com" value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)} style={{ flex: 1 }} />
+                <button type="button" className="btn btn-secondary" onClick={sendReset}
+                  disabled={!forgotEmail}>Send</button>
+              </div>
+              {forgotMsg && (
+                <div className={forgotMsg.ok ? 'auth-notice' : 'form-error'}>{forgotMsg.text}</div>
+              )}
+            </div>
+          )}
         </form>
       </div>
     </div>

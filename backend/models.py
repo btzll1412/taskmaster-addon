@@ -511,6 +511,19 @@ class AutomationRule(db.Model):
         }
 
 
+class AuthToken(db.Model):
+    """Single-use, expiring tokens for email flows: password resets and
+    invitations. Only a hash of the token is stored."""
+    __tablename__ = 'auth_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(20), nullable=False)  # reset | invite
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+
 class AppSetting(db.Model):
     """Free-form key/value store for instance-wide settings (login branding, …)."""
     __tablename__ = 'app_settings'

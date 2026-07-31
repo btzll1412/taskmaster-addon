@@ -76,7 +76,12 @@ def send_email(to, subject, body, cfg=None):
     msg['To'] = to
     if cfg.get('base_url'):
         body = f"{body}\n\nOpen TaskMaster: {cfg['base_url'].rstrip('/')}"
-    msg.set_content(body)
+    try:
+        # plain 7bit keeps links literal (no quoted-printable =3D mangling
+        # in barebones mail clients); falls back for non-ASCII bodies
+        msg.set_content(body, cte='7bit')
+    except (UnicodeEncodeError, ValueError):
+        msg.set_content(body)
     try:
         if cfg['security'] == 'ssl':
             server = smtplib.SMTP_SSL(cfg['host'], cfg['port'], timeout=15)

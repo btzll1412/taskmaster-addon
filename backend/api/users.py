@@ -110,6 +110,100 @@ def create_user(actor):
     return jsonify({'user': u.to_dict(include_private=True)}), 201
 
 
+@bp.post('/invite')
+@login_required
+def invite_user(actor):
+    """Create a user from just an email address: they get an invitation link
+    and choose their own username, display name and password."""
+    if not (actor.role in ('super_admin', 'admin', 'company_admin')
+            or perm.has_cap(actor, perm.CAP_USERS)):
+        return jsonify({'error': 'No permission to create users'}), 403
+    from .. import emailer
+    if not emailer.is_ready():
+        return jsonify({'error': 'Set up the email service first (Settings → Email)'}), 400
+    data = request.json or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return jsonify({'error': 'A valid email address is required'}), 400
+    if User.query.filter(db.func.lower(User.email) == email).first():
+        return jsonify({'error': 'A user with this email already exists'}), 409
+    if User.query.filter_by(username=email).first():
+        return jsonify({'error': 'A user with this email already exists'}), 409
+
+    company_id = data.get('company_id') or None
+    if perm.is_super(actor):
+        if company_id and not db.session.get(Company, company_id):
+            return jsonify({'error': 'Company not found'}), 404
+    elif actor.role == 'admin':
+        if not company_id or company_id not in perm.managed_company_ids(actor):
+            return jsonify({'error': 'You can only create users in companies you manage'}), 403
+    else:
+        company_id = actor.company_id
+
+    resolved = _resolve_role(actor, company_id,
+                             data.get('role') or 'member', data.get('custom_role_id'))
+    if isinstance(resolved, str):
+        return jsonify({'error': resolved}), 400
+    role, custom_role_id = resolved
+
+    u = User(
+        username=email,                      # placeholder until they pick one
+        display_name=email.split('@')[0],
+        email=email,
+        role=role,
+        custom_role_id=custom_role_id,
+        company_id=company_id,
+        password_hash=None,                  # cannot sign in until accepted
+    )
+    db.session.add(u)
+    db.session.flush()
+    if not company_id and role != 'super_admin':
+        if data.get('all_companies') and perm.is_super(actor):
+            db.session.add(AccessGrant(user_id=u.id, scope_type='all', scope_id=0,
+                                       granted_by=actor.id))
+        for cid in (data.get('company_ids') or []):
+            if db.session.get(Company, cid) and perm.can_grant_in_company(actor, cid):
+                db.session.add(AccessGrant(user_id=u.id, scope_type='company',
+                                           scope_id=int(cid), granted_by=actor.id))
+    log_activity(actor.id, None, None, 'user_created',
+                 f'invited {email} by email', company_id=u.company_id)
+    _send_invite(actor, u)
+    db.session.commit()
+    return jsonify({'user': u.to_dict(include_private=True)}), 201
+
+
+@bp.post('/<int:user_id>/invite')
+@login_required
+def resend_invite(actor, user_id):
+    """Send the invitation again (only for accounts still waiting to accept)."""
+    u = User.query.get_or_404(user_id)
+    if not perm.can_manage_user(actor, u):
+        return jsonify({'error': 'No permission to manage this user'}), 403
+    from .. import emailer
+    if not emailer.is_ready():
+        return jsonify({'error': 'Set up the email service first (Settings → Email)'}), 400
+    if u.password_hash:
+        return jsonify({'error': 'This user already finished setting up — use Reset password instead'}), 400
+    if not u.email:
+        return jsonify({'error': 'This user has no email address'}), 400
+    _send_invite(actor, u)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+def _send_invite(actor, u):
+    from flask import current_app
+    from .. import emailer
+    from .auth_routes import issue_token, _link_base
+    token = issue_token(u, 'invite')
+    emailer.send_async(
+        current_app._get_current_object(), u.email,
+        'You\'re invited to TaskMaster',
+        f'Hi,\n\n{actor.display_name} invited you to TaskMaster.\n'
+        f'Click the link below to choose your username and password - it takes a '
+        f'minute. The link expires in 7 days.\n\n{_link_base()}/?invite={token}')
+
+
 @bp.put('/<int:user_id>')
 @login_required
 def update_user(actor, user_id):
