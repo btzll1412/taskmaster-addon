@@ -26,6 +26,7 @@ class User(db.Model):
     hide_done = db.Column(db.Boolean, default=False)  # personal preference
     # set when an admin gives them a (temporary) password; forces a change on next login
     must_change_password = db.Column(db.Boolean, default=False)
+    email_notifications = db.Column(db.Boolean, default=True)  # mail me my notifications
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -41,6 +42,7 @@ class User(db.Model):
             'is_active': self.is_active,
             'hide_done': bool(self.hide_done),
             'must_change_password': bool(self.must_change_password),
+            'email_notifications': self.email_notifications is None or bool(self.email_notifications),
             'has_password': bool(self.password_hash),
             'initials': ''.join(w[0] for w in self.display_name.split()[:2]).upper() or '?',
         }
@@ -507,6 +509,19 @@ class AutomationRule(db.Model):
             'disabled_company_ids': self.disabled_company_list(),
             'created_by': self.created_by,
         }
+
+
+class AuthToken(db.Model):
+    """Single-use, expiring tokens for email flows: password resets and
+    invitations. Only a hash of the token is stored."""
+    __tablename__ = 'auth_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(20), nullable=False)  # reset | invite
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
 
 
 class AppSetting(db.Model):

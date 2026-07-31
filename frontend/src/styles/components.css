@@ -736,3 +736,6 @@ body.resizing-col { cursor: col-resize; user-select: none; }
   }
   .user-row > .btn { grid-column: 1 / -1; justify-self: start; }
 }
+.forgot-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.new-user-tabs { margin-bottom: 6px; }
+.invite-hint { font-size: 13px; line-height: 1.5; margin: 0; }

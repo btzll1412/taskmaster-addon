@@ -2,6 +2,11 @@ import React, { useEffect } from 'react'
 import { useStore, connectEvents, disconnectEvents, connectHistory } from './store'
 import Login from './views/Login'
 import ForcePasswordChange from './views/ForcePasswordChange'
+import { ResetPasswordPage, AcceptInvitePage } from './views/EmailLinkPages'
+
+const urlParams = new URLSearchParams(window.location.search)
+const resetToken = urlParams.get('reset')
+const inviteToken = urlParams.get('invite')
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import HomeView from './views/HomeView'
@@ -28,6 +33,8 @@ export default function App() {
   }, [user?.id, user?.must_change_password])
 
   if (!authChecked) return <div className="app-loading">Loading…</div>
+  if (!user && resetToken) return <ResetPasswordPage token={resetToken} />
+  if (!user && inviteToken) return <AcceptInvitePage token={inviteToken} />
   if (!user) return pendingUser ? <ForcePasswordChange /> : <Login />
 
   return (
