@@ -49,7 +49,8 @@ def log_activity(user_id, board_id, item_id, action, description, company_id=Non
 
 
 def notify_user(user_id, actor_id, ntype, board_id, item_id, message):
-    """Create an in-app notification (skipping self-notifications) and push it live."""
+    """Create an in-app notification (skipping self-notifications), push it
+    live, and email it when the email service is on and the person wants it."""
     if user_id == actor_id or user_id is None:
         return
     n = Notification(
@@ -59,6 +60,22 @@ def notify_user(user_id, actor_id, ntype, board_id, item_id, message):
     db.session.add(n)
     db.session.flush()
     realtime.publish({'type': 'notification'}, target_user_id=user_id)
+
+    from .models import User
+    target = db.session.get(User, user_id)
+    if target and target.email and (target.email_notifications is None
+                                    or target.email_notifications):
+        from flask import current_app
+        from . import emailer
+        subjects = {
+            'assigned': 'You were assigned a job',
+            'status': 'Status changed',
+            'update': 'New update on a job',
+            'mention': 'You were mentioned',
+        }
+        emailer.send_async(current_app._get_current_object(), target.email,
+                           f'TaskMaster: {subjects.get(ntype, "Notification")}',
+                           message)
 
 
 def broadcast_board(board_id, kind='board_changed'):

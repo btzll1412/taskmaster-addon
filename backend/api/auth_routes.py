@@ -198,5 +198,7 @@ def update_profile(user):
         user.email = data['email'].strip() or None
     if 'hide_done' in data:
         user.hide_done = bool(data['hide_done'])
+    if 'email_notifications' in data:
+        user.email_notifications = bool(data['email_notifications'])
     db.session.commit()
     return jsonify({'user': _user_payload(user)})

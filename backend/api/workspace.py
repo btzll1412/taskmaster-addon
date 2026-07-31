@@ -544,6 +544,47 @@ def delete_automation(user, rule_id):
     return jsonify({'ok': True})
 
 
+# ---- Email service (super admin) ----
+
+@bp.get('/email-settings')
+@login_required
+def get_email_settings(user):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage the email service'}), 403
+    from .. import emailer
+    return jsonify({'settings': emailer.public_config()})
+
+
+@bp.put('/email-settings')
+@login_required
+def update_email_settings(user):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage the email service'}), 403
+    from .. import emailer
+    emailer.save_config(request.json or {})
+    db.session.commit()
+    return jsonify({'settings': emailer.public_config()})
+
+
+@bp.post('/email-settings/test')
+@login_required
+def test_email_settings(user):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage the email service'}), 403
+    from .. import emailer
+    to = ((request.json or {}).get('to') or user.email or '').strip()
+    if not to:
+        return jsonify({'error': 'Enter an address to send the test to (or set your own email in Settings)'}), 400
+    cfg = emailer.get_config()
+    cfg['enabled'] = True  # allow testing before switching it on
+    err = emailer.send_email(to, 'TaskMaster test email',
+                             'It works! Your TaskMaster email service is configured correctly.',
+                             cfg)
+    if err:
+        return jsonify({'error': f'Sending failed: {err}'}), 400
+    return jsonify({'ok': True})
+
+
 # ---- Job templates ----
 
 def _clean_specs(specs):

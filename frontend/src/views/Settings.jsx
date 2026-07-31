@@ -33,6 +33,11 @@ export default function Settings() {
               <span className="tab-icon">🖥️</span> Login screen
             </button>
           )}
+          {user.role === 'super_admin' && (
+            <button className={tab === 'email' ? 'active' : ''} onClick={() => setTab('email')}>
+              <span className="tab-icon">✉️</span> Email
+            </button>
+          )}
         </div>
       )}
 
@@ -47,7 +52,119 @@ export default function Settings() {
       {tab === 'automations' && isAdmin && <AutomationsSection user={user} showToast={showToast} />}
       {tab === 'roles' && canRoles && <RolesSection user={user} workspace={workspace} showToast={showToast} />}
       {tab === 'login' && user.role === 'super_admin' && <LoginScreenSection showToast={showToast} />}
+      {tab === 'email' && user.role === 'super_admin' && <EmailSection user={user} showToast={showToast} />}
     </div>
+  )
+}
+
+function EmailSection({ user, showToast }) {
+  const [s, setS] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [testTo, setTestTo] = useState(user.email || '')
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+
+  useEffect(() => {
+    api.get('/api/email-settings').then(d => setS(d.settings)).catch(e => showToast(e.message))
+  }, [])
+
+  if (!s) return <section className="settings-card"><div className="muted">Loading…</div></section>
+  const set = (k) => (e) => setS({ ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
+
+  async function save() {
+    setSaving(true)
+    try {
+      const d = await api.put('/api/email-settings', s)
+      setS(d.settings)
+      showToast('Email settings saved')
+    } catch (e) { showToast(e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function sendTest() {
+    setTesting(true); setTestResult(null)
+    try {
+      // save first so the test uses what's on screen
+      await api.put('/api/email-settings', s)
+      await api.post('/api/email-settings/test', { to: testTo })
+      setTestResult({ ok: true, msg: `Test email sent to ${testTo} — check the inbox.` })
+    } catch (e) {
+      setTestResult({ ok: false, msg: e.message })
+    } finally { setTesting(false) }
+  }
+
+  return (
+    <section className="settings-card">
+      <h3>✉️ Email service</h3>
+      <p className="muted">
+        Connect your SMTP server (e.g. your provider's outgoing mail, Gmail with an app
+        password, or SendGrid) and TaskMaster emails people their notifications —
+        assignments, status changes, and mentions. People without an email address, or who
+        switch it off in their preferences, are simply skipped.
+      </p>
+      <div className="form-col">
+        <label className="radio-row">
+          <input type="checkbox" checked={!!s.enabled} onChange={set('enabled')} />
+          <span><strong>Send notification emails</strong></span>
+        </label>
+        <div className="form-row">
+          <div className="form-col-half">
+            <label>SMTP server</label>
+            <input placeholder="e.g. smtp.gmail.com" value={s.host} onChange={set('host')} />
+          </div>
+          <div className="form-col-half">
+            <label>Port</label>
+            <input type="number" value={s.port} onChange={set('port')} />
+          </div>
+        </div>
+        <label>Security</label>
+        <select value={s.security} onChange={set('security')}>
+          <option value="starttls">STARTTLS (usual, port 587)</option>
+          <option value="ssl">SSL/TLS (port 465)</option>
+          <option value="none">None (local relay)</option>
+        </select>
+        <div className="form-row">
+          <div className="form-col-half">
+            <label>Username <span className="muted">(empty = no login)</span></label>
+            <input value={s.username} onChange={set('username')} autoComplete="off" />
+          </div>
+          <div className="form-col-half">
+            <label>Password {s.has_password && <span className="muted">(saved — leave empty to keep)</span>}</label>
+            <input type="password" placeholder={s.has_password ? '••••••••' : ''}
+              value={s.password || ''} onChange={set('password')} autoComplete="new-password" />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-col-half">
+            <label>From name</label>
+            <input value={s.from_name} onChange={set('from_name')} />
+          </div>
+          <div className="form-col-half">
+            <label>From address</label>
+            <input type="email" placeholder="taskmaster@yourcompany.com" value={s.from_addr} onChange={set('from_addr')} />
+          </div>
+        </div>
+        <label>Portal address <span className="muted">(optional — adds an "Open TaskMaster" link to every email)</span></label>
+        <input placeholder="https://tasks.yourcompany.com" value={s.base_url} onChange={set('base_url')} />
+        <div><button className="btn btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save email settings'}
+        </button></div>
+
+        <h4>Send a test</h4>
+        <div className="form-row">
+          <input type="email" placeholder="you@yourcompany.com" value={testTo}
+            onChange={e => setTestTo(e.target.value)} style={{ flex: 1 }} />
+          <button className="btn btn-secondary" onClick={sendTest} disabled={testing || !testTo}>
+            {testing ? 'Sending…' : '✉️ Send test email'}
+          </button>
+        </div>
+        {testResult && (
+          <div className={testResult.ok ? 'auth-notice email-test-ok' : 'form-error'}>
+            {testResult.ok ? '✅ ' : ''}{testResult.msg}
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -334,10 +451,10 @@ function ProfileSection({ user, init, showToast }) {
 
 function PreferencesSection({ user, init, showToast }) {
   const [busy, setBusy] = useState(false)
-  async function toggle(e) {
+  const toggle = (field) => async (e) => {
     setBusy(true)
     try {
-      await api.put('/api/auth/profile', { hide_done: e.target.checked })
+      await api.put('/api/auth/profile', { [field]: e.target.checked })
       await init()
     } catch (err) { showToast(err.message) }
     finally { setBusy(false) }
@@ -346,8 +463,12 @@ function PreferencesSection({ user, init, showToast }) {
     <section className="settings-card">
       <h3>🧹 Preferences</h3>
       <label className="radio-row pref-row">
-        <input type="checkbox" checked={!!user.hide_done} disabled={busy} onChange={toggle} />
+        <input type="checkbox" checked={!!user.hide_done} disabled={busy} onChange={toggle('hide_done')} />
         <span>Hide <strong>Done</strong> items on boards <span className="muted">(you can always bring them back by unchecking this, or by using the status filter)</span></span>
+      </label>
+      <label className="radio-row pref-row">
+        <input type="checkbox" checked={!!user.email_notifications} disabled={busy} onChange={toggle('email_notifications')} />
+        <span>Email me my notifications <span className="muted">(assignments, status changes, mentions — needs an email on your profile)</span></span>
       </label>
     </section>
   )
