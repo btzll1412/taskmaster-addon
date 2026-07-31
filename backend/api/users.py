@@ -64,6 +64,9 @@ def create_user(actor):
     password = data.get('password') or ''
     if len(password) < 6:
         return jsonify({'error': 'A temporary password of at least 6 characters is required'}), 400
+    email = (data.get('email') or '').strip().lower() or None
+    if email and User.query.filter(db.func.lower(User.email) == email).first():
+        return jsonify({'error': 'Another user already has this email address'}), 409
 
     company_id = data.get('company_id') or None
     if perm.is_super(actor):
@@ -84,7 +87,7 @@ def create_user(actor):
     u = User(
         username=username,
         display_name=(data.get('display_name') or '').strip() or username,
-        email=(data.get('email') or '').strip() or None,
+        email=email,
         color=data.get('color') or '#579bfc',
         role=role,
         custom_role_id=custom_role_id,
@@ -216,7 +219,11 @@ def update_user(actor, user_id):
     if 'color' in data:
         u.color = data['color']
     if 'email' in data:
-        u.email = (data['email'] or '').strip() or None
+        new_email = (data['email'] or '').strip().lower() or None
+        if new_email and User.query.filter(db.func.lower(User.email) == new_email,
+                                           User.id != u.id).first():
+            return jsonify({'error': 'Another user already has this email address'}), 409
+        u.email = new_email
     if 'company_id' in data and perm.is_super(actor):
         cid = data['company_id'] or None
         if cid and not db.session.get(Company, cid):

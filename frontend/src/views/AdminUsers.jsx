@@ -222,6 +222,7 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
       payload.display_name = form.display_name
       payload.password = form.password
       payload.color = form.color
+      payload.email = form.email
     }
     if (form.roleChoice.startsWith('custom:')) payload.custom_role_id = Number(form.roleChoice.slice(7))
     else payload.role = form.roleChoice.slice(6)
@@ -270,6 +271,8 @@ function NewUserModal({ me, workspace, defaultCompanyId, onClose, onDone, showTo
             </div>
             <label>Temporary password <span className="muted">(min. 6 — they must pick their own on first login)</span></label>
             <input type="password" value={form.password} onChange={set('password')} required minLength={6} />
+            <label>Email <span className="muted">(optional — they'll receive their notifications there)</span></label>
+            <input type="email" placeholder="person@customer.com" value={form.email} onChange={set('email')} />
           </>
         )}
 
