@@ -265,6 +265,82 @@ def apply_template(user, board, item, template, log):
                      f'created "{item.name}" from template "{template.name}"')
 
 
+def run_automations(trigger, board, item, actor_id, new_label_text=None):
+    """Central automation engine. Applies every enabled rule matching the
+    trigger for this board's company (global rules unless opted out).
+    Returns the set of user ids already notified."""
+    import json as _json
+    from . import permissions as perm
+    from .models import AutomationRule, BoardColumn, ItemValue, User
+    company_id = perm.board_company_id(board)
+    notified = set()
+    for rule in AutomationRule.query.filter_by(enabled=True).all():
+        if (rule.trigger or 'status') != trigger:
+            continue
+        if rule.company_id is not None and rule.company_id != company_id:
+            continue
+        if rule.company_id is None and company_id in rule.disabled_company_list():
+            continue
+        if trigger == 'status' and rule.label_text \
+                and rule.label_text.strip().lower() != (new_label_text or '').strip().lower():
+            continue
+
+        action = rule.action or 'notify'
+        if action == 'notify':
+            targets = set(rule.user_id_list())
+            if rule.notify_assignees:
+                targets |= people_column_user_ids(item.id)
+            what = {'status': f'changed to {new_label_text}',
+                    'created': 'was created',
+                    'overdue': 'is overdue'}[trigger]
+            for uid in targets:
+                if uid not in notified:
+                    notify_user(uid, actor_id, 'status', board.id, item.id,
+                                f'"{item.name}" on {board.name} {what}')
+                    notified.add(uid)
+        elif action == 'set_status':
+            col = (BoardColumn.query.filter_by(board_id=board.id, type='status')
+                   .order_by(BoardColumn.position).first())
+            wanted = (rule.action_param or '').strip().lower()
+            label = col and next((l for l in col.settings_dict().get('labels', [])
+                                  if l['label'].strip().lower() == wanted), None)
+            if col and label:
+                iv = ItemValue.query.filter_by(item_id=item.id, column_id=col.id).first()
+                if not (iv and iv.value_dict().get('id') == label['id']):
+                    if iv:
+                        iv.value = _json.dumps({'id': label['id']})
+                    else:
+                        db.session.add(ItemValue(item_id=item.id, column_id=col.id,
+                                                 value=_json.dumps({'id': label['id']})))
+                    log_activity(rule.created_by, board.id, item.id, 'value_changed',
+                                 f'automation set Status of "{item.name}" to {label["label"]}')
+        elif action == 'assign':
+            try:
+                target_id = int(rule.action_param or 0)
+            except ValueError:
+                continue
+            target = db.session.get(User, target_id)
+            col = (BoardColumn.query.filter_by(board_id=board.id, type='people')
+                   .order_by(BoardColumn.position).first())
+            if target and target.is_active and col \
+                    and target_id in perm.eligible_assignee_ids(item):
+                iv = ItemValue.query.filter_by(item_id=item.id, column_id=col.id).first()
+                ids = set((iv.value_dict().get('user_ids') if iv else None) or [])
+                if target_id not in ids:
+                    ids.add(target_id)
+                    payload = _json.dumps({'user_ids': sorted(ids)})
+                    if iv:
+                        iv.value = payload
+                    else:
+                        db.session.add(ItemValue(item_id=item.id, column_id=col.id, value=payload))
+                    log_activity(rule.created_by, board.id, item.id, 'value_changed',
+                                 f'automation assigned {target.display_name} to "{item.name}"')
+                    notify_user(target_id, actor_id, 'assigned', board.id, item.id,
+                                f'You were assigned to "{item.name}" on {board.name} (automation)')
+                    notified.add(target_id)
+    return notified
+
+
 def create_default_board_layout(board):
     """Give a fresh board monday-style defaults: two groups + core columns."""
     if (BoardColumn.query.filter_by(board_id=board.id).count()

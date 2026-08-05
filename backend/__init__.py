@@ -58,6 +58,9 @@ def create_app():
     from .api import register_blueprints
     register_blueprints(app)
 
+    from .scheduler import start_scheduler
+    start_scheduler(app)
+
     @app.before_request
     def api_guards():
         from flask import request
@@ -68,8 +71,8 @@ def create_app():
         u = current_user()  # never returns a user with a pending temp password
         if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
             return None
-        # viewers may still authenticate and manage their own session basics
-        for allowed in ('/api/auth/', '/api/notifications/read'):
+        # viewers may still authenticate, manage session basics, and submit requests
+        for allowed in ('/api/auth/', '/api/notifications/read', '/api/requests'):
             if request.path.startswith(allowed):
                 return None
         if u and not perm.can_write(u):

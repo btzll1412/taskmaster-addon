@@ -21,6 +21,7 @@ export default function Sidebar() {
     sidebarMobile, toggleSidebarMobile } = useStore()
   const [newBoardDept, setNewBoardDept] = useState(null)
   const [newDeptCompany, setNewDeptCompany] = useState(null)
+  const [showRequest, setShowRequest] = useState(false)
   const [closedCompanies, toggleCompany] = usePersistedSet('tm-closed-companies')
   const [closedDepts, toggleDept] = usePersistedSet('tm-closed-depts')
   const [companiesOpen, setCompaniesOpen] = useState(localStorage.getItem('tm-companies-open') !== '0')
@@ -58,6 +59,12 @@ export default function Sidebar() {
             onClick={() => navigate({ page: 'mywork' })}>
             <span className="nav-icon">🗂️</span><span className="nav-label">My Work</span>
           </button>
+          {user.company_id && !(user.capabilities || []).includes('create_jobs') && (
+            <button className="nav-item" title="New request"
+              onClick={() => setShowRequest(true)}>
+              <span className="nav-icon">📨</span><span className="nav-label">New request</span>
+            </button>
+          )}
           <div className={`nav-item companies-nav ${route.page === 'companies' ? 'active' : ''}`} title="Companies"
             onClick={collapsed ? () => navigate({ page: 'companies' }) : undefined}>
             <span className="nav-icon">🏛️</span>
@@ -148,6 +155,9 @@ export default function Sidebar() {
               setNewDeptCompany(null); refreshBoards()
             }} showToast={showToast} />
         )}
+        {showRequest && (
+          <RequestModal onClose={() => setShowRequest(false)} showToast={showToast} />
+        )}
         {newBoardDept && (
           <NewBoardModal dept={newBoardDept}
             onClose={() => setNewBoardDept(null)}
@@ -204,6 +214,38 @@ function BoardNode({ board, active, onOpen, showToast }) {
         </div>
       )}
     </div>
+  )
+}
+
+/** Simple help-request intake for company users who can't create jobs. */
+function RequestModal({ onClose, showToast }) {
+  const [subject, setSubject] = useState('')
+  const [details, setDetails] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <Modal title="📨 New request" onClose={onClose}>
+      <form className="form-col" onSubmit={async (e) => {
+        e.preventDefault()
+        if (!subject.trim() || busy) return
+        setBusy(true)
+        try {
+          await api.post('/api/requests', { subject: subject.trim(), details: details.trim() })
+          showToast('Request sent — the team has been notified ✅')
+          onClose()
+        } catch (err) {
+          showToast(err.message)
+          setBusy(false)
+        }
+      }}>
+        <label>What do you need?</label>
+        <input placeholder="e.g. Printer in reception not working" value={subject} autoFocus
+          onChange={e => setSubject(e.target.value)} required />
+        <label>Details <span className="muted">(optional)</span></label>
+        <textarea rows={4} placeholder="Anything that helps us fix it faster…"
+          value={details} onChange={e => setDetails(e.target.value)} />
+        <button className="btn btn-primary" disabled={busy}>{busy ? 'Sending…' : 'Send request'}</button>
+      </form>
+    </Modal>
   )
 }
 

@@ -477,7 +477,10 @@ class AutomationRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='CASCADE'))
     name = db.Column(db.String(200), nullable=False, default='')
-    label_text = db.Column(db.String(120))  # match by label text; NULL = any change
+    trigger = db.Column(db.String(20), default='status')  # status | created | overdue
+    label_text = db.Column(db.String(120))  # status trigger: match label text; NULL = any
+    action = db.Column(db.String(20), default='notify')   # notify | set_status | assign
+    action_param = db.Column(db.String(200))              # set_status: label text; assign: user id
     notify_user_ids = db.Column(db.Text, default='[]')
     notify_assignees = db.Column(db.Boolean, default=False)
     enabled = db.Column(db.Boolean, default=True)
@@ -502,11 +505,48 @@ class AutomationRule(db.Model):
             'id': self.id,
             'company_id': self.company_id,
             'name': self.name,
+            'trigger': self.trigger or 'status',
             'label_text': self.label_text,
+            'action': self.action or 'notify',
+            'action_param': self.action_param,
             'notify_user_ids': self.user_id_list(),
             'notify_assignees': bool(self.notify_assignees),
             'enabled': bool(self.enabled),
             'disabled_company_ids': self.disabled_company_list(),
+            'created_by': self.created_by,
+        }
+
+
+class RecurringJob(db.Model):
+    """Auto-creates a job on a board on a schedule (daily / weekly / monthly)."""
+    __tablename__ = 'recurring_jobs'
+    id = db.Column(db.Integer, primary_key=True)
+    board_id = db.Column(db.Integer, db.ForeignKey('boards.id', ondelete='CASCADE'), nullable=False)
+    name = db.Column(db.String(500), nullable=False)
+    template_id = db.Column(db.Integer, db.ForeignKey('job_templates.id'))
+    assignee_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    frequency = db.Column(db.String(10), nullable=False)  # daily | weekly | monthly
+    weekday = db.Column(db.Integer, default=0)            # 0=Monday (weekly)
+    monthday = db.Column(db.Integer, default=1)           # 1-28 (monthly)
+    next_run_at = db.Column(db.DateTime, nullable=False)
+    last_run_at = db.Column(db.DateTime)
+    enabled = db.Column(db.Boolean, default=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'board_id': self.board_id,
+            'name': self.name,
+            'template_id': self.template_id,
+            'assignee_id': self.assignee_id,
+            'frequency': self.frequency,
+            'weekday': self.weekday,
+            'monthday': self.monthday,
+            'next_run_at': iso(self.next_run_at),
+            'last_run_at': iso(self.last_run_at),
+            'enabled': bool(self.enabled),
             'created_by': self.created_by,
         }
 

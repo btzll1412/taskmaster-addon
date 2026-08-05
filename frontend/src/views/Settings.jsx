@@ -38,6 +38,11 @@ export default function Settings() {
               <span className="tab-icon">✉️</span> Email
             </button>
           )}
+          {user.role === 'super_admin' && (
+            <button className={tab === 'backups' ? 'active' : ''} onClick={() => setTab('backups')}>
+              <span className="tab-icon">💾</span> Backups
+            </button>
+          )}
         </div>
       )}
 
@@ -53,7 +58,49 @@ export default function Settings() {
       {tab === 'roles' && canRoles && <RolesSection user={user} workspace={workspace} showToast={showToast} />}
       {tab === 'login' && user.role === 'super_admin' && <LoginScreenSection showToast={showToast} />}
       {tab === 'email' && user.role === 'super_admin' && <EmailSection user={user} showToast={showToast} />}
+      {tab === 'backups' && user.role === 'super_admin' && <BackupsSection showToast={showToast} />}
     </div>
+  )
+}
+
+function BackupsSection({ showToast }) {
+  const [backups, setBackups] = useState(null)
+  const [running, setRunning] = useState(false)
+  async function load() {
+    try { setBackups((await api.get('/api/backups')).backups) }
+    catch (e) { showToast(e.message) }
+  }
+  useEffect(() => { load() }, [])
+  const fmt = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`
+  return (
+    <section className="settings-card">
+      <h3>💾 Backups</h3>
+      <p className="muted">
+        A full backup (database + uploaded files) is written automatically once a day and the
+        last 14 are kept, safely outside the live database. Download one anytime, or trigger
+        a fresh one before big changes.
+      </p>
+      <div><button className="btn btn-primary" disabled={running} onClick={async () => {
+        setRunning(true)
+        try {
+          const r = await api.post('/api/backups/run')
+          showToast(`Backup written: ${r.name}`)
+          await load()
+        } catch (e) { showToast(e.message) }
+        finally { setRunning(false) }
+      }}>{running ? 'Backing up…' : '💾 Back up now'}</button></div>
+      <div className="grants-list">
+        {backups === null && <div className="muted">Loading…</div>}
+        {backups?.length === 0 && <div className="muted">No backups yet — the first one runs tonight.</div>}
+        {backups?.map(b => (
+          <div key={b.name} className="grant-row">
+            <span className="grant-label">💾 {b.name}</span>
+            <span className="muted">{fmt(b.size)}</span>
+            <a className="btn btn-small" href={`/api/backups/${b.name}/download`}>⬇️ Download</a>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -318,11 +365,16 @@ function AutomationsSection({ user, showToast }) {
             <div className="automation-main">
               <strong>{r.name || 'Automation'}</strong>
               <span className="muted">
-                When status becomes {r.label_text ? `"${r.label_text}"` : 'anything'} → notify{' '}
-                {[
-                  ...r.notify_user_ids.map(id => data.users[String(id)]?.display_name || '?'),
-                  ...(r.notify_assignees ? ['people assigned to the job'] : []),
-                ].join(', ') || 'nobody'}
+                {r.trigger === 'created' ? 'When a job is created'
+                  : r.trigger === 'overdue' ? 'When a job goes overdue'
+                    : `When status becomes ${r.label_text ? `"${r.label_text}"` : 'anything'}`}
+                {' → '}
+                {r.action === 'set_status' ? `set status to "${r.action_param}"`
+                  : r.action === 'assign' ? `assign ${data.users[String(r.action_param)]?.display_name || '?'}`
+                    : `notify ${[
+                      ...r.notify_user_ids.map(id => data.users[String(id)]?.display_name || '?'),
+                      ...(r.notify_assignees ? ['people assigned to the job'] : []),
+                    ].join(', ') || 'nobody'}`}
               </span>
             </div>
             <span className={`role-tag ${r.company_id === null ? 'super_admin' : 'member'}`}>
@@ -349,7 +401,10 @@ function AutomationsSection({ user, showToast }) {
 
 function NewAutomationForm({ user, users, workspace, isSuper, onDone, showToast }) {
   const [name, setName] = useState('')
+  const [trigger, setTrigger] = useState('status')
   const [label, setLabel] = useState('Done')
+  const [action, setAction] = useState('notify')
+  const [actionParam, setActionParam] = useState('')
   const [companyId, setCompanyId] = useState(isSuper ? '' : String(user.company_id || ''))
   const [notifyAssignees, setNotifyAssignees] = useState(true)
   const [userIds, setUserIds] = useState([])
@@ -363,7 +418,10 @@ function NewAutomationForm({ user, users, workspace, isSuper, onDone, showToast 
     try {
       await api.post('/api/automations', {
         name: name.trim(),
-        label_text: label === '__any__' ? '' : label,
+        trigger,
+        label_text: trigger === 'status' && label !== '__any__' ? label : '',
+        action,
+        action_param: actionParam,
         company_id: companyId ? Number(companyId) : null,
         notify_user_ids: userIds,
         notify_assignees: notifyAssignees,
@@ -379,12 +437,51 @@ function NewAutomationForm({ user, users, workspace, isSuper, onDone, showToast 
         onChange={e => setName(e.target.value)} />
       <div className="form-row">
         <div className="form-col-half">
-          <label>When status becomes</label>
-          <select value={label} onChange={e => setLabel(e.target.value)}>
-            {LABELS.map(l => <option key={l} value={l}>{l}</option>)}
-            <option value="__any__">Any change</option>
+          <label>When…</label>
+          <select value={trigger} onChange={e => setTrigger(e.target.value)}>
+            <option value="status">Status changes</option>
+            <option value="created">A job is created</option>
+            <option value="overdue">A job goes overdue</option>
           </select>
         </div>
+        {trigger === 'status' && (
+          <div className="form-col-half">
+            <label>…becomes</label>
+            <select value={label} onChange={e => setLabel(e.target.value)}>
+              {LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+              <option value="__any__">Any status</option>
+            </select>
+          </div>
+        )}
+      </div>
+      <div className="form-row">
+        <div className="form-col-half">
+          <label>Then…</label>
+          <select value={action} onChange={e => { setAction(e.target.value); setActionParam('') }}>
+            <option value="notify">Notify people</option>
+            <option value="set_status">Set the status</option>
+            <option value="assign">Assign a person</option>
+          </select>
+        </div>
+        {action === 'set_status' && (
+          <div className="form-col-half">
+            <label>…to</label>
+            <select value={actionParam} onChange={e => setActionParam(e.target.value)}>
+              <option value="">— pick a status —</option>
+              {LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+        )}
+        {action === 'assign' && (
+          <div className="form-col-half">
+            <label>…whom <span className="muted">(only if they have access to the job)</span></label>
+            <select value={actionParam} onChange={e => setActionParam(e.target.value)}>
+              <option value="">— pick a person —</option>
+              {users.filter(u => u.is_active).map(u =>
+                <option key={u.id} value={u.id}>{u.display_name}</option>)}
+            </select>
+          </div>
+        )}
         {isSuper && (
           <div className="form-col-half">
             <label>Applies to</label>
@@ -395,19 +492,23 @@ function NewAutomationForm({ user, users, workspace, isSuper, onDone, showToast 
           </div>
         )}
       </div>
-      <label className="radio-row">
-        <input type="checkbox" checked={notifyAssignees} onChange={e => setNotifyAssignees(e.target.checked)} />
-        <span>Notify the people assigned to the job</span>
-      </label>
-      <label>Also notify these people</label>
-      <div className="sites-grid">
-        {users.filter(u => u.is_active).map(u => (
-          <label key={u.id} className={`cap-option ${userIds.includes(u.id) ? 'selected' : ''}`}>
-            <input type="checkbox" checked={userIds.includes(u.id)} onChange={() => toggleUser(u.id)} />
-            <span>{u.display_name}</span>
+      {action === 'notify' && (
+        <>
+          <label className="radio-row">
+            <input type="checkbox" checked={notifyAssignees} onChange={e => setNotifyAssignees(e.target.checked)} />
+            <span>Notify the people assigned to the job</span>
           </label>
-        ))}
-      </div>
+          <label>Also notify these people</label>
+          <div className="sites-grid">
+            {users.filter(u => u.is_active).map(u => (
+              <label key={u.id} className={`cap-option ${userIds.includes(u.id) ? 'selected' : ''}`}>
+                <input type="checkbox" checked={userIds.includes(u.id)} onChange={() => toggleUser(u.id)} />
+                <span>{u.display_name}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
       <div className="form-row">
         <button className="btn btn-primary" onClick={save}>Create automation</button>
         <button className="btn btn-secondary" onClick={onDone}>Cancel</button>

@@ -477,15 +477,27 @@ def create_automation(user):
         if not company_id or int(company_id) not in mine:
             return jsonify({'error': 'You can only create automations for your own company'}), 403
         company_id = int(company_id)
+    trigger = data.get('trigger') or 'status'
+    if trigger not in ('status', 'created', 'overdue'):
+        return jsonify({'error': 'Unknown trigger'}), 400
+    action = data.get('action') or 'notify'
+    if action not in ('notify', 'set_status', 'assign'):
+        return jsonify({'error': 'Unknown action'}), 400
     user_ids = [int(u) for u in (data.get('notify_user_ids') or [])]
     notify_assignees = bool(data.get('notify_assignees'))
-    if not user_ids and not notify_assignees:
+    action_param = (str(data.get('action_param') or '')).strip() or None
+    if action == 'notify' and not user_ids and not notify_assignees:
         return jsonify({'error': 'Pick people to notify (or the assigned people option)'}), 400
+    if action in ('set_status', 'assign') and not action_param:
+        return jsonify({'error': 'Pick what the action should do'}), 400
     label = (data.get('label_text') or '').strip() or None
     r = AutomationRule(
         company_id=company_id,
-        name=(data.get('name') or '').strip() or (f'Notify when status becomes {label}' if label else 'Notify on status change'),
-        label_text=label,
+        name=(data.get('name') or '').strip() or 'Automation',
+        trigger=trigger,
+        label_text=label if trigger == 'status' else None,
+        action=action,
+        action_param=action_param,
         notify_user_ids=json.dumps(user_ids),
         notify_assignees=notify_assignees,
         created_by=user.id,
@@ -542,6 +554,190 @@ def delete_automation(user, rule_id):
     db.session.delete(r)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ---- Recurring jobs ----
+
+@bp.get('/recurring')
+@login_required
+def list_recurring(user):
+    from ..models import JobTemplate, RecurringJob, User as U
+    rules = RecurringJob.query.order_by(RecurringJob.id).all()
+    out = []
+    for r in rules:
+        board = db.session.get(Board, r.board_id)
+        if board is None or not perm.can_create_board_in(user, perm.board_company_id(board)) \
+                and not (perm.board_access(user, board) == 'full' and perm.has_cap(user, perm.CAP_CREATE)):
+            continue
+        d = r.to_dict()
+        d['board_name'] = board.name
+        d['board_icon'] = board.icon
+        out.append(d)
+    templates = {t.id: t.name for t in JobTemplate.query.all()}
+    users = {u.id: u.display_name for u in U.query.all()}
+    return jsonify({'recurring': out, 'template_names': templates, 'user_names': users})
+
+
+@bp.post('/recurring')
+@login_required
+def create_recurring(user):
+    from ..models import RecurringJob
+    from ..scheduler import compute_next_run
+    data = request.json or {}
+    board = Board.query.get_or_404(data.get('board_id'))
+    if not (perm.board_access(user, board) == 'full' and perm.has_cap(user, perm.CAP_CREATE)):
+        return jsonify({'error': 'No permission to create jobs on this board'}), 403
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Job name is required'}), 400
+    freq = data.get('frequency')
+    if freq not in ('daily', 'weekly', 'monthly'):
+        return jsonify({'error': 'Pick how often it repeats'}), 400
+    weekday = max(0, min(6, int(data.get('weekday') or 0)))
+    monthday = max(1, min(28, int(data.get('monthday') or 1)))
+    r = RecurringJob(
+        board_id=board.id, name=name,
+        template_id=data.get('template_id') or None,
+        assignee_id=data.get('assignee_id') or None,
+        frequency=freq, weekday=weekday, monthday=monthday,
+        next_run_at=compute_next_run(freq, weekday, monthday),
+        created_by=user.id,
+    )
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({'recurring': r.to_dict()}), 201
+
+
+@bp.put('/recurring/<int:rule_id>')
+@login_required
+def update_recurring(user, rule_id):
+    from ..models import RecurringJob
+    r = RecurringJob.query.get_or_404(rule_id)
+    board = db.session.get(Board, r.board_id)
+    if not (r.created_by == user.id or perm.is_super(user)
+            or (board and perm.can_manage_company(user, perm.board_company_id(board)))):
+        return jsonify({'error': 'No permission to change this recurring job'}), 403
+    data = request.json or {}
+    if 'enabled' in data:
+        r.enabled = bool(data['enabled'])
+    db.session.commit()
+    return jsonify({'recurring': r.to_dict()})
+
+
+@bp.delete('/recurring/<int:rule_id>')
+@login_required
+def delete_recurring(user, rule_id):
+    from ..models import RecurringJob
+    r = RecurringJob.query.get_or_404(rule_id)
+    board = db.session.get(Board, r.board_id)
+    if not (r.created_by == user.id or perm.is_super(user)
+            or (board and perm.can_manage_company(user, perm.board_company_id(board)))):
+        return jsonify({'error': 'No permission to delete this recurring job'}), 403
+    db.session.delete(r)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+# ---- Backups (super admin) ----
+
+@bp.get('/backups')
+@login_required
+def list_backups(user):
+    import os
+    from ..scheduler import BACKUP_DIR
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage backups'}), 403
+    out = []
+    if os.path.isdir(BACKUP_DIR):
+        for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
+            if f.startswith('taskmaster-') and f.endswith('.zip'):
+                p = os.path.join(BACKUP_DIR, f)
+                out.append({'name': f, 'size': os.path.getsize(p)})
+    return jsonify({'backups': out})
+
+
+@bp.post('/backups/run')
+@login_required
+def run_backup_now(user):
+    from ..scheduler import run_backup
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage backups'}), 403
+    try:
+        target = run_backup()
+    except Exception as e:  # noqa: BLE001
+        return jsonify({'error': f'Backup failed: {e}'}), 500
+    import os
+    return jsonify({'ok': True, 'name': os.path.basename(target)})
+
+
+@bp.get('/backups/<path:name>/download')
+@login_required
+def download_backup(user, name):
+    import os
+    from flask import send_from_directory
+    from ..scheduler import BACKUP_DIR
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage backups'}), 403
+    if '/' in name or not name.startswith('taskmaster-') or not name.endswith('.zip'):
+        return jsonify({'error': 'Unknown backup'}), 404
+    return send_from_directory(BACKUP_DIR, name, as_attachment=True)
+
+
+# ---- Customer requests (works even for people who cannot create jobs) ----
+
+@bp.post('/requests')
+@login_required
+def create_request(user):
+    """A simple 'ask for help' intake: lands as a job on the company's
+    Requests board, with the requester attached and admins notified."""
+    import json as _json
+    from ..models import BoardColumn, BoardGroup, Item, ItemUpdate, ItemValue, User as U
+    from ..services import broadcast_board, log_activity, notify_user
+    data = request.json or {}
+    subject = (data.get('subject') or '').strip()
+    if not subject:
+        return jsonify({'error': 'Tell us what you need in the subject'}), 400
+    details = (data.get('details') or '').strip()
+    if not user.company_id:
+        return jsonify({'error': 'Requests are for company users — staff can create jobs directly'}), 400
+    company = db.session.get(Company, user.company_id)
+    board = Board.query.filter_by(company_id=company.id, name='Requests').first()
+    if board is None:
+        from ..services import create_default_board_layout
+        board = Board(name='Requests', icon='📨', company_id=company.id,
+                      owner_id=user.id, position=999)
+        db.session.add(board)
+        db.session.flush()
+        create_default_board_layout(board)
+    group = (BoardGroup.query.filter_by(board_id=board.id)
+             .order_by(BoardGroup.position).first())
+    max_pos = (db.session.query(db.func.max(Item.position))
+               .filter_by(group_id=group.id).scalar() or 0)
+    item = Item(board_id=board.id, group_id=group.id, name=subject,
+                position=max_pos + 1, created_by=user.id)
+    db.session.add(item)
+    db.session.flush()
+    people = (BoardColumn.query.filter_by(board_id=board.id, type='people')
+              .order_by(BoardColumn.position).first())
+    if people:
+        db.session.add(ItemValue(item_id=item.id, column_id=people.id,
+                                 value=_json.dumps({'user_ids': [user.id]})))
+    if details:
+        db.session.add(ItemUpdate(item_id=item.id, user_id=user.id, body=details))
+    log_activity(user.id, board.id, item.id, 'item_created',
+                 f'submitted request "{subject}"')
+    # tell the company admins and the staff who manage this company
+    for admin in U.query.filter_by(is_active=True).all():
+        if admin.id == user.id:
+            continue
+        if (admin.role == 'super_admin'
+                or (admin.role == 'company_admin' and admin.company_id == company.id)
+                or (admin.role == 'admin' and company.id in perm.managed_company_ids(admin))):
+            notify_user(admin.id, user.id, 'update', board.id, item.id,
+                        f'{user.display_name} submitted a request: "{subject}" ({company.name})')
+    db.session.commit()
+    broadcast_board(board.id)
+    return jsonify({'ok': True, 'item_id': item.id}), 201
 
 
 # ---- Email service (super admin) ----

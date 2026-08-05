@@ -62,6 +62,8 @@ export default function TemplatesPage() {
         </div>
       </section>
 
+      <RecurringSection showToast={showToast} />
+
       <section className="entity-section">
         <h3>🌐 Shared by others</h3>
         <div className="template-list">
@@ -76,6 +78,56 @@ export default function TemplatesPage() {
           onSaved={() => { setEditing(null); load() }} showToast={showToast} />
       )}
     </div>
+  )
+}
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+function RecurringSection({ showToast }) {
+  const [data, setData] = useState(null)
+  async function load() {
+    try { setData(await api.get('/api/recurring')) } catch { /* ignore */ }
+  }
+  useEffect(() => { load() }, [])
+  if (!data || data.recurring.length === 0) return null
+
+  const scheduleText = (r) =>
+    r.frequency === 'daily' ? 'every day'
+      : r.frequency === 'weekly' ? `every ${WEEKDAYS[r.weekday || 0]}`
+        : `every month on the ${r.monthday}`
+
+  return (
+    <section className="entity-section">
+      <h3>🔁 Recurring jobs</h3>
+      <div className="template-list">
+        {data.recurring.map(r => (
+          <div key={r.id} className={`template-card ${r.enabled ? '' : 'automation-off'}`}>
+            <div className="template-card-head">
+              <span className="template-icon">{r.board_icon}</span>
+              <strong className="template-name">{r.name}</strong>
+              <span className="muted">{r.board_name} · {scheduleText(r)}
+                {r.assignee_id ? ` · → ${data.user_names[String(r.assignee_id)] || '?'}` : ''}
+                {r.template_id ? ` · 📦 ${data.template_names[String(r.template_id)] || ''}` : ''}</span>
+              <label className="switch" title={r.enabled ? 'On' : 'Paused'}>
+                <input type="checkbox" checked={r.enabled} onChange={async () => {
+                  try { await api.put(`/api/recurring/${r.id}`, { enabled: !r.enabled }); load() }
+                  catch (e) { showToast(e.message) }
+                }} />
+                <span className="switch-slider" />
+              </label>
+              <button className="icon-btn" title="Delete recurring job" onClick={async () => {
+                if (!confirm(`Stop creating "${r.name}" automatically?`)) return
+                try { await api.del(`/api/recurring/${r.id}`); load() } catch (e) { showToast(e.message) }
+              }}>🗑️</button>
+            </div>
+            <div className="template-card-body">
+              <span className="muted">Next run: {r.next_run_at ? new Date(r.next_run_at).toLocaleDateString() : '—'}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="muted">Create recurring jobs from any board's ＋ New job popup (Repeat option).</p>
+    </section>
   )
 }
 
