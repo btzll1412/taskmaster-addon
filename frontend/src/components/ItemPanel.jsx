@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import Cell from './Cell'
-import { Avatar, Popover, fmtDateTime, timeAgo } from './ui'
+import { Avatar, OverlayPopover, Popover, fmtDateTime, timeAgo } from './ui'
 
 export default function ItemPanel({ itemId }) {
   const { users, user, boardData, closeItem, refreshBoard, showToast } = useStore()
@@ -274,20 +274,46 @@ function MentionTextarea({ value, onChange, users, onSubmit }) {
   )
 }
 
-/** One-click done: flips the board's status column to its "Done" label. */
+/** Quick status control in the panel header: shows the current status in its
+ * color and opens the board's full label list — same options as the board. */
 function MarkDoneButton({ item, columns, act }) {
+  const [open, setOpen] = useState(false)
+  const anchor = useRef(null)
   const statusCol = columns.find(c => c.type === 'status')
-  const done = statusCol?.settings?.labels?.find(l => l.label.trim().toLowerCase() === 'done')
-  if (!statusCol || !done) return null
-  const isDone = item.values?.[String(statusCol.id)]?.id === done.id
+  const labels = statusCol?.settings?.labels || []
+  if (!statusCol || labels.length === 0) return null
+  const currentId = item.values?.[String(statusCol.id)]?.id
+  const current = labels.find(l => l.id === currentId)
+  const done = labels.find(l => l.label.trim().toLowerCase() === 'done')
+  const set = (value) => {
+    setOpen(false)
+    act(api.put(`/api/items/${item.id}/values/${statusCol.id}`, { value }))
+  }
   return (
-    <button
-      className={`btn btn-small ${isDone ? 'btn-done' : 'btn-mark-done'}`}
-      title={isDone ? 'Done — click to reopen (clears the status)' : 'Set status to Done'}
-      onClick={() => act(api.put(`/api/items/${item.id}/values/${statusCol.id}`,
-        { value: isDone ? null : { id: done.id } }))}>
-      {isDone ? '✔ Done' : '✓ Mark done'}
-    </button>
+    <div className="topbar-anchor" ref={anchor}>
+      <button
+        className={`btn btn-small ${current ? 'btn-status-current' : 'btn-mark-done'}`}
+        style={current ? { background: current.color, borderColor: current.color, color: '#fff' } : undefined}
+        title="Change status"
+        onClick={() => setOpen(true)}>
+        {current ? current.label : done ? '✓ Mark done' : '＋ Status'}
+      </button>
+      {open && (
+        <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={200}>
+          {labels.map(l => (
+            <button key={l.id} className="label-option" style={{ background: l.color }}
+              onClick={() => set({ id: l.id })}>
+              {l.label}{currentId === l.id ? ' ✓' : ''}
+            </button>
+          ))}
+          {current && (
+            <button className="label-option label-clear" onClick={() => set(null)}>
+              Clear status
+            </button>
+          )}
+        </OverlayPopover>
+      )}
+    </div>
   )
 }
 

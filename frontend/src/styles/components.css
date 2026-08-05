@@ -742,3 +742,4 @@ body.resizing-col { cursor: col-resize; user-select: none; }
 .btn-mark-done { border-color: var(--success, #00c875); color: var(--success, #00c875); }
 .btn-mark-done:hover { background: var(--success, #00c875); color: #fff; }
 .btn-done { background: var(--success, #00c875); border-color: var(--success, #00c875); color: #fff; }
+.menu-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; padding: 4px 10px 6px; }

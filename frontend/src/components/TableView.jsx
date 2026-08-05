@@ -249,21 +249,30 @@ function ItemMenu({ item, groups, act, canEdit, isSub, canEditItems, columns, se
   const [open, setOpen] = useState(false)
   const anchor = useRef(null)
   const others = canEdit && !isSub ? groups.filter(g => g.id !== item.group_id) : []
-  // one-click done: the board's status column + its "Done" label
+  // quick status: every label this board's status column has
   const statusCol = (columns || []).find(c => c.type === 'status')
-  const doneLabel = statusCol?.settings?.labels?.find(l => l.label.trim().toLowerCase() === 'done')
-  const isDone = doneLabel && item.values?.[String(statusCol.id)]?.id === doneLabel.id
+  const labels = statusCol?.settings?.labels || []
+  const currentId = statusCol ? item.values?.[String(statusCol.id)]?.id : null
   return (
     <div className="item-menu" ref={anchor}>
       <button className="icon-btn row-menu-btn" onClick={() => setOpen(true)}>⋯</button>
       {open && (
         <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={210}>
-          {canEditItems && statusCol && doneLabel && (
+          {canEditItems && statusCol && labels.length > 0 && (
             <>
-              <button className="menu-item"
-                onClick={() => { setOpen(false); setValue(item, statusCol, isDone ? null : { id: doneLabel.id }) }}>
-                {isDone ? '↩️ Reopen (clear status)' : '✅ Mark done'}
-              </button>
+              <div className="menu-label muted">Set status</div>
+              {labels.map(l => (
+                <button key={l.id} className="label-option" style={{ background: l.color }}
+                  onClick={() => { setOpen(false); setValue(item, statusCol, { id: l.id }) }}>
+                  {l.label}{currentId === l.id ? ' ✓' : ''}
+                </button>
+              ))}
+              {currentId && (
+                <button className="label-option label-clear"
+                  onClick={() => { setOpen(false); setValue(item, statusCol, null) }}>
+                  Clear status
+                </button>
+              )}
               <hr className="menu-sep" />
             </>
           )}
