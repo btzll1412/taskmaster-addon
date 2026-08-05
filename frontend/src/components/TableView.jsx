@@ -212,7 +212,8 @@ function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, set
             {item.name}
             {item.updates_count > 0 && <span className="bubble"> 💬 {item.updates_count}</span>}
           </span>
-          <ItemMenu item={item} groups={groups} act={act} canEdit={canEdit} isSub={isSub} />
+          <ItemMenu item={item} groups={groups} act={act} canEdit={canEdit} isSub={isSub}
+            canEditItems={canEditItems} columns={columns} setValue={setValue} />
         </div>
       </td>
       {columns.map(col => (
@@ -244,15 +245,28 @@ function AddSubItem({ board, parent, act }) {
   )
 }
 
-function ItemMenu({ item, groups, act, canEdit, isSub }) {
+function ItemMenu({ item, groups, act, canEdit, isSub, canEditItems, columns, setValue }) {
   const [open, setOpen] = useState(false)
   const anchor = useRef(null)
   const others = canEdit && !isSub ? groups.filter(g => g.id !== item.group_id) : []
+  // one-click done: the board's status column + its "Done" label
+  const statusCol = (columns || []).find(c => c.type === 'status')
+  const doneLabel = statusCol?.settings?.labels?.find(l => l.label.trim().toLowerCase() === 'done')
+  const isDone = doneLabel && item.values?.[String(statusCol.id)]?.id === doneLabel.id
   return (
     <div className="item-menu" ref={anchor}>
       <button className="icon-btn row-menu-btn" onClick={() => setOpen(true)}>⋯</button>
       {open && (
         <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={210}>
+          {canEditItems && statusCol && doneLabel && (
+            <>
+              <button className="menu-item"
+                onClick={() => { setOpen(false); setValue(item, statusCol, isDone ? null : { id: doneLabel.id }) }}>
+                {isDone ? '↩️ Reopen (clear status)' : '✅ Mark done'}
+              </button>
+              <hr className="menu-sep" />
+            </>
+          )}
           {others.map(g => (
             <button key={g.id} className="menu-item"
               onClick={() => { setOpen(false); act(api.put(`/api/items/${item.id}`, { group_id: g.id })) }}>

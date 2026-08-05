@@ -739,3 +739,6 @@ body.resizing-col { cursor: col-resize; user-select: none; }
 .forgot-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .new-user-tabs { margin-bottom: 6px; }
 .invite-hint { font-size: 13px; line-height: 1.5; margin: 0; }
+.btn-mark-done { border-color: var(--success, #00c875); color: var(--success, #00c875); }
+.btn-mark-done:hover { background: var(--success, #00c875); color: #fff; }
+.btn-done { background: var(--success, #00c875); border-color: var(--success, #00c875); color: #fff; }

@@ -74,6 +74,7 @@ export default function ItemPanel({ itemId }) {
             )}
             <ItemPanelName item={item} act={act} canEdit={canEditItems} />
           </div>
+          {canEditItems && <MarkDoneButton item={item} columns={columns} act={act} />}
           {canWrite && <FlagButton item={item} users={jobUsers} me={user} showToast={showToast} />}
           <ShareButton item={item} users={users} me={user} boardAccess={boardData?.access} showToast={showToast} />
           <button className="icon-btn" onClick={closeItem}>✕</button>
@@ -270,6 +271,23 @@ function MentionTextarea({ value, onChange, users, onSubmit }) {
         </div>
       )}
     </div>
+  )
+}
+
+/** One-click done: flips the board's status column to its "Done" label. */
+function MarkDoneButton({ item, columns, act }) {
+  const statusCol = columns.find(c => c.type === 'status')
+  const done = statusCol?.settings?.labels?.find(l => l.label.trim().toLowerCase() === 'done')
+  if (!statusCol || !done) return null
+  const isDone = item.values?.[String(statusCol.id)]?.id === done.id
+  return (
+    <button
+      className={`btn btn-small ${isDone ? 'btn-done' : 'btn-mark-done'}`}
+      title={isDone ? 'Done — click to reopen (clears the status)' : 'Set status to Done'}
+      onClick={() => act(api.put(`/api/items/${item.id}/values/${statusCol.id}`,
+        { value: isDone ? null : { id: done.id } }))}>
+      {isDone ? '✔ Done' : '✓ Mark done'}
+    </button>
   )
 }
 
