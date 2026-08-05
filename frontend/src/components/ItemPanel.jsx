@@ -114,7 +114,15 @@ export default function ItemPanel({ itemId }) {
           {tab === 'updates' && (
             <div className="updates-tab">
               {canEditItems && (
-                <form className="update-composer" onSubmit={postUpdate}>
+                <form className="update-composer" onSubmit={postUpdate}
+                  onPaste={async (e) => {
+                    const images = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'))
+                    if (images.length === 0) return
+                    e.preventDefault()
+                    showToast('Uploading pasted image…')
+                    await uploadFiles(images)
+                    showToast('📎 Screenshot attached to Files')
+                  }}>
                   <MentionTextarea value={body} onChange={setBody} users={jobUsers}
                     onSubmit={postUpdate} />
                   <button className="btn btn-primary btn-small" disabled={!body.trim()}>Update</button>
@@ -133,7 +141,7 @@ export default function ItemPanel({ itemId }) {
                           onClick={() => { if (confirm('Delete this update?')) act(api.del(`/api/updates/${u.id}`)) }}>✕</button>
                       )}
                     </div>
-                    <div className="update-body">{u.body}</div>
+                    <div className="update-body"><RichText text={u.body} /></div>
                   </div>
                 )
               })}
@@ -197,6 +205,36 @@ export default function ItemPanel({ itemId }) {
       </aside>
     </>
   )
+}
+
+/** Safe rich text for updates: **bold**, *italic*, `code`, "- " bullets,
+ * clickable links, @mention highlighting. Built as React elements — no HTML. */
+export function RichText({ text }) {
+  const renderInline = (line, keyBase) => {
+    const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|https?:\/\/\S+|@[A-Za-z0-9_.\-]+)/g)
+    return parts.map((p, i) => {
+      const k = `${keyBase}-${i}`
+      if (/^\*\*[^*]+\*\*$/.test(p)) return <strong key={k}>{p.slice(2, -2)}</strong>
+      if (/^\*[^*]+\*$/.test(p)) return <em key={k}>{p.slice(1, -1)}</em>
+      if (/^`[^`]+`$/.test(p)) return <code key={k}>{p.slice(1, -1)}</code>
+      if (/^https?:\/\//.test(p)) return <a key={k} href={p} target="_blank" rel="noreferrer">{p}</a>
+      if (/^@[A-Za-z0-9_.\-]+$/.test(p)) return <span key={k} className="mention-chip">{p}</span>
+      return p
+    })
+  }
+  const lines = (text || '').split('\n')
+  const out = []
+  let bullets = []
+  lines.forEach((line, i) => {
+    if (/^\s*[-•]\s+/.test(line)) {
+      bullets.push(<li key={`li-${i}`}>{renderInline(line.replace(/^\s*[-•]\s+/, ''), `l${i}`)}</li>)
+    } else {
+      if (bullets.length) { out.push(<ul key={`ul-${i}`}>{bullets}</ul>); bullets = [] }
+      out.push(<span key={`ln-${i}`}>{renderInline(line, `t${i}`)}{i < lines.length - 1 ? <br /> : null}</span>)
+    }
+  })
+  if (bullets.length) out.push(<ul key="ul-end">{bullets}</ul>)
+  return <>{out}</>
 }
 
 /** Update composer textarea: typing @ pops a filtered people picker;

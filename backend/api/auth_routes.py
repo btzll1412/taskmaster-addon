@@ -245,15 +245,38 @@ def setup():
     return jsonify({'user': _user_payload(user)})
 
 
+# Brute-force protection: 5 failed tries per username locks it for 15 minutes.
+_FAILED_LOGINS = {}
+LOCKOUT_TRIES = 5
+LOCKOUT_WINDOW = 15 * 60
+
+
+def _login_blocked(key):
+    import time as _t
+    now = _t.time()
+    tries = [t for t in _FAILED_LOGINS.get(key, []) if now - t < LOCKOUT_WINDOW]
+    _FAILED_LOGINS[key] = tries
+    return len(tries) >= LOCKOUT_TRIES
+
+
+def _login_failed(key):
+    import time as _t
+    _FAILED_LOGINS.setdefault(key, []).append(_t.time())
+
+
 @bp.post('/login')
 def login():
     data = request.json or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
+    if _login_blocked(username):
+        return jsonify({'error': 'Too many failed attempts — try again in 15 minutes'}), 429
     user = User.query.filter_by(username=username).first()
     if not user or not user.is_active or not user.password_hash \
             or not check_password_hash(user.password_hash, password):
+        _login_failed(username)
         return jsonify({'error': 'Invalid username or password'}), 401
+    _FAILED_LOGINS.pop(username, None)
     if user.must_change_password:
         # a temporary password does NOT start a session — it only unlocks the
         # set-your-own-password step. Closing the tab lands back on login.

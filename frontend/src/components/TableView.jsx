@@ -15,7 +15,7 @@ const COLUMN_TYPES = [
   { type: 'checkbox', label: 'Checkbox', icon: '☑️' },
 ]
 
-export default function TableView({ items, canEdit, canCreate, canEditItems, usersFor }) {
+export default function TableView({ items, canEdit, canCreate, canEditItems, canReorder, usersFor }) {
   const { boardData, users, refreshBoard, openItem, showToast } = useStore()
   const { board, groups, columns } = boardData
   const [widths, setWidths] = useState({})   // live drag-resize overrides
@@ -61,7 +61,8 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, use
           items={items.filter(i => i.group_id === group.id)}
           groups={groups} board={board} canEdit={canEdit}
           act={act} setValue={setValue} updateColumnSettings={updateColumnSettings}
-          openItem={openItem} colWidth={colWidth} startResize={startResize} />
+          openItem={openItem} colWidth={colWidth} startResize={startResize}
+          canReorder={canReorder} />
       ))}
       {canEdit && (
         <button className="add-group-btn"
@@ -74,10 +75,30 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, use
 }
 
 function GroupTable({ group, groups, columns, items, users, usersFor, board, canEdit,
-  canCreate, canEditItems, act, setValue, updateColumnSettings, openItem, colWidth, startResize }) {
+  canCreate, canEditItems, canReorder, act, setValue, updateColumnSettings, openItem, colWidth, startResize }) {
   const [newItem, setNewItem] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [expanded, setExpanded] = useState(() => new Set())
+  const [dragId, setDragId] = useState(null)
+  const dragRef = useRef(null)
+
+  async function dropOn(target) {
+    const dragging = dragRef.current
+    dragRef.current = null
+    if (!dragging || dragging === target.id) { setDragId(null); return }
+    const tops = items.filter(i => !i.parent_id)
+    const from = tops.findIndex(i => i.id === dragging)
+    const to = tops.findIndex(i => i.id === target.id)
+    if (from < 0 || to < 0) { setDragId(null); return }
+    const before = to > from ? tops[to] : tops[to - 1]
+    const after = to > from ? tops[to + 1] : tops[to]
+    let pos
+    if (!before) pos = (after?.position ?? 1) - 1
+    else if (!after) pos = before.position + 1
+    else pos = (before.position + after.position) / 2
+    setDragId(null)
+    await act(api.put(`/api/items/${dragging}`, { position: pos }))
+  }
 
   const topItems = items.filter(i => !i.parent_id)
   const subsByParent = {}
@@ -143,7 +164,11 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
                     updateColumnSettings={updateColumnSettings} openItem={openItem} colWidth={colWidth}
                     subCount={(subsByParent[item.id] || []).length}
                     isExpanded={expanded.has(item.id)}
-                    onToggleExpand={() => toggleExpand(item.id)} />
+                    onToggleExpand={() => toggleExpand(item.id)}
+                    draggable={canReorder}
+                    onDragStart={() => { dragRef.current = item.id; setDragId(item.id) }}
+                    onDropRow={() => dropOn(item)}
+                    isDragging={dragId === item.id} />
                   {expanded.has(item.id) && (
                     <>
                       {(subsByParent[item.id] || []).map(sub => (
@@ -195,9 +220,14 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
 }
 
 function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, setValue,
-  updateColumnSettings, openItem, colWidth, isSub, subCount = 0, isExpanded, onToggleExpand }) {
+  updateColumnSettings, openItem, colWidth, isSub, subCount = 0, isExpanded, onToggleExpand,
+  draggable, onDragStart, onDropRow, isDragging }) {
   return (
-    <tr className={`item-row ${isSub ? 'sub-item-row' : ''}`}>
+    <tr className={`item-row ${isSub ? 'sub-item-row' : ''} ${isDragging ? 'row-dragging' : ''}`}
+      draggable={!!draggable}
+      onDragStart={draggable ? onDragStart : undefined}
+      onDragOver={draggable ? (e) => e.preventDefault() : undefined}
+      onDrop={draggable ? (e) => { e.preventDefault(); onDropRow() } : undefined}>
       <td className="col-name">
         <div className="item-name-cell">
           {isSub && <span className="sub-indent">↳</span>}

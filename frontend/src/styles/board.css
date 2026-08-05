@@ -312,3 +312,33 @@
 .status-filter-chip:hover { background: var(--hover); }
 .status-filter-chip.active { background: var(--chip-color); color: #fff; }
 .pref-row { font-size: 14px; }
+
+/* ---------- Calendar view ---------- */
+.calendar-view { margin-top: 14px; }
+.calendar-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.calendar-head h3 { min-width: 170px; text-align: center; }
+.calendar-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+  background: var(--border-light); border: 1px solid var(--border-light);
+  border-radius: 10px; overflow: hidden;
+}
+.calendar-dow {
+  background: var(--surface-2); padding: 6px; text-align: center;
+  font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
+}
+.calendar-cell { background: var(--surface); min-height: 96px; padding: 4px; }
+.calendar-empty { background: var(--surface-2); }
+.calendar-today { box-shadow: inset 0 0 0 2px var(--primary); }
+.calendar-daynum { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 2px; }
+.calendar-job {
+  display: block; width: 100%; text-align: left; font-size: 12px; margin-bottom: 2px;
+  padding: 3px 6px; border-radius: 5px; border-left: 3px solid var(--job-color);
+  background: var(--surface-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.calendar-job:hover { background: var(--hover); }
+@media (max-width: 900px) {
+  .calendar-cell { min-height: 64px; }
+  .calendar-job { font-size: 10px; padding: 2px 4px; }
+}
+.item-row[draggable="true"] .item-name-cell { cursor: grab; }
+.row-dragging td { opacity: .4; }
