@@ -27,6 +27,7 @@ class User(db.Model):
     # set when an admin gives them a (temporary) password; forces a change on next login
     must_change_password = db.Column(db.Boolean, default=False)
     email_notifications = db.Column(db.Boolean, default=True)  # mail me my notifications
+    totp_secret = db.Column(db.String(64))  # set = two-factor codes required at login
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -43,6 +44,8 @@ class User(db.Model):
             'hide_done': bool(self.hide_done),
             'must_change_password': bool(self.must_change_password),
             'email_notifications': self.email_notifications is None or bool(self.email_notifications),
+            'totp_enabled': bool(self.totp_secret),
+            'auth_source': self.auth_source or 'local',
             'has_password': bool(self.password_hash),
             'initials': ''.join(w[0] for w in self.display_name.split()[:2]).upper() or '?',
         }

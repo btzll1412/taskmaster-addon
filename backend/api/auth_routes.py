@@ -272,11 +272,25 @@ def login():
     if _login_blocked(username):
         return jsonify({'error': 'Too many failed attempts — try again in 15 minutes'}), 429
     user = User.query.filter_by(username=username).first()
-    if not user or not user.is_active or not user.password_hash \
-            or not check_password_hash(user.password_hash, password):
+    local_ok = bool(user and user.is_active and user.password_hash
+                    and check_password_hash(user.password_hash, password))
+    if not local_ok:
+        # Directory (LDAP / Active Directory) fallback
+        from .. import ldap_auth
+        ldap_user = ldap_auth.try_login(username, password)
+        if ldap_user is not None:
+            user, local_ok = ldap_user, True
+    if not local_ok:
         _login_failed(username)
         return jsonify({'error': 'Invalid username or password'}), 401
     _FAILED_LOGINS.pop(username, None)
+    if user.totp_secret:
+        code = (data.get('totp') or '').strip()
+        if not code:
+            return jsonify({'totp_required': True})
+        if not _totp_valid(user.totp_secret, code):
+            _login_failed(username)
+            return jsonify({'error': 'Wrong 2FA code'}), 401
     if user.must_change_password:
         # a temporary password does NOT start a session — it only unlocks the
         # set-your-own-password step. Closing the tab lands back on login.
@@ -355,3 +369,62 @@ def update_profile(user):
         user.email_notifications = bool(data['email_notifications'])
     db.session.commit()
     return jsonify({'user': _user_payload(user)})
+
+
+# ---- Two-factor (TOTP, standard authenticator apps) ----
+
+def _totp_now(secret, offset=0):
+    import base64, hmac, struct, time as _t
+    key = base64.b32decode(secret.upper() + '=' * (-len(secret) % 8))
+    counter = int(_t.time() // 30) + offset
+    digest = hmac.new(key, struct.pack('>Q', counter), 'sha1').digest()
+    o = digest[-1] & 0x0F
+    code = (struct.unpack('>I', digest[o:o + 4])[0] & 0x7FFFFFFF) % 1000000
+    return f'{code:06d}'
+
+
+def _totp_valid(secret, code):
+    code = (code or '').strip().replace(' ', '')
+    return any(_totp_valid_one(secret, code, off) for off in (-1, 0, 1))
+
+
+def _totp_valid_one(secret, code, off):
+    try:
+        return _totp_now(secret, off) == code
+    except Exception:  # noqa: BLE001
+        return False
+
+
+@bp.post('/totp/setup')
+@login_required
+def totp_setup(user):
+    import base64
+    secret = base64.b32encode(secrets.token_bytes(10)).decode().rstrip('=')
+    session['pending_totp'] = secret
+    uri = f'otpauth://totp/TaskMaster:{user.username}?secret={secret}&issuer=TaskMaster'
+    return jsonify({'secret': secret, 'uri': uri})
+
+
+@bp.post('/totp/confirm')
+@login_required
+def totp_confirm(user):
+    secret = session.get('pending_totp')
+    if not secret:
+        return jsonify({'error': 'Start the 2FA setup first'}), 400
+    if not _totp_valid(secret, (request.json or {}).get('code')):
+        return jsonify({'error': 'That code is not right — check your authenticator app'}), 400
+    user.totp_secret = secret
+    session.pop('pending_totp', None)
+    db.session.commit()
+    return jsonify({'ok': True, 'user': _user_payload(user)})
+
+
+@bp.post('/totp/disable')
+@login_required
+def totp_disable(user):
+    data = request.json or {}
+    if not check_password_hash(user.password_hash or '', data.get('password') or ''):
+        return jsonify({'error': 'Enter your password to turn off 2FA'}), 400
+    user.totp_secret = None
+    db.session.commit()
+    return jsonify({'ok': True, 'user': _user_payload(user)})

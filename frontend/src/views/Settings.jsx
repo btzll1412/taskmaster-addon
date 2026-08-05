@@ -43,6 +43,11 @@ export default function Settings() {
               <span className="tab-icon">💾</span> Backups
             </button>
           )}
+          {user.role === 'super_admin' && (
+            <button className={tab === 'directory' ? 'active' : ''} onClick={() => setTab('directory')}>
+              <span className="tab-icon">🏢</span> Directory
+            </button>
+          )}
         </div>
       )}
 
@@ -51,6 +56,7 @@ export default function Settings() {
           <ProfileSection user={user} init={init} showToast={showToast} />
           <PreferencesSection user={user} init={init} showToast={showToast} />
           <PasswordSection showToast={showToast} />
+          <TwoFactorSection user={user} init={init} showToast={showToast} />
           <AppearanceSection />
         </>
       )}
@@ -59,6 +65,7 @@ export default function Settings() {
       {tab === 'login' && user.role === 'super_admin' && <LoginScreenSection showToast={showToast} />}
       {tab === 'email' && user.role === 'super_admin' && <EmailSection user={user} showToast={showToast} />}
       {tab === 'backups' && user.role === 'super_admin' && <BackupsSection showToast={showToast} />}
+      {tab === 'directory' && user.role === 'super_admin' && <DirectorySection workspace={workspace} showToast={showToast} />}
     </div>
   )
 }
@@ -707,6 +714,101 @@ function RolesSection({ user, workspace, showToast }) {
           </div>
         </>
       )}
+    </section>
+  )
+}
+
+function TwoFactorSection({ user, init, showToast }) {
+  const [setup, setSetup] = useState(null)
+  const [code, setCode] = useState('')
+  const [pw, setPw] = useState('')
+  if (user.auth_source === 'ldap') return null
+  return (
+    <section className="settings-card">
+      <h3>🛡️ Two-factor authentication</h3>
+      {user.totp_enabled ? (
+        <>
+          <p className="muted">2FA is <strong>on</strong> — logins need a code from your authenticator app.</p>
+          <div className="form-row">
+            <input type="password" placeholder="Your password" value={pw} onChange={e => setPw(e.target.value)} />
+            <button className="btn btn-secondary" onClick={async () => {
+              try { await api.post('/api/auth/totp/disable', { password: pw }); setPw(''); await init(); showToast('2FA turned off') }
+              catch (e) { showToast(e.message) }
+            }}>Turn off 2FA</button>
+          </div>
+        </>
+      ) : setup === null ? (
+        <>
+          <p className="muted">Add a 6-digit code step at login, using any authenticator app (Google Authenticator, Authy, 1Password…).</p>
+          <div><button className="btn btn-primary" onClick={async () => {
+            try { setSetup(await api.post('/api/auth/totp/setup')) } catch (e) { showToast(e.message) }
+          }}>Set up 2FA</button></div>
+        </>
+      ) : (
+        <>
+          <p className="muted">1. In your authenticator app, add an account with this secret key:</p>
+          <p><code className="totp-secret">{setup.secret}</code></p>
+          <p className="muted">2. Enter the 6-digit code it shows to confirm:</p>
+          <div className="form-row">
+            <input placeholder="123 456" value={code} maxLength={7} onChange={e => setCode(e.target.value)} />
+            <button className="btn btn-primary" onClick={async () => {
+              try { await api.post('/api/auth/totp/confirm', { code }); setSetup(null); setCode(''); await init(); showToast('🛡️ 2FA is on') }
+              catch (e) { showToast(e.message) }
+            }}>Confirm</button>
+            <button className="btn btn-secondary" onClick={() => { setSetup(null); setCode('') }}>Cancel</button>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function DirectorySection({ workspace, showToast }) {
+  const [s, setS] = useState(null)
+  useEffect(() => {
+    api.get('/api/ldap-settings').then(d => setS(d.settings)).catch(e => showToast(e.message))
+  }, [])
+  if (!s) return <section className="settings-card"><div className="muted">Loading…</div></section>
+  const set = (k) => (e) => setS({ ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
+  return (
+    <section className="settings-card">
+      <h3>🏢 Directory sign-in (Active Directory / LDAP)</h3>
+      <p className="muted">
+        Let people sign in with their Windows/domain password. Local TaskMaster accounts keep
+        working; unknown usernames are tried against the directory, and on first success an
+        account is created automatically with the default role below (give them access via 🔑 as usual).
+      </p>
+      <div className="form-col">
+        <label className="radio-row">
+          <input type="checkbox" checked={!!s.enabled} onChange={set('enabled')} />
+          <span><strong>Enable directory sign-in</strong></span>
+        </label>
+        <label>Server</label>
+        <input placeholder="ldap://dc1.company.local  or  ldaps://dc1.company.local:636" value={s.server} onChange={set('server')} />
+        <label>Sign-in format <span className="muted">({'{username}'} is replaced with what they type)</span></label>
+        <input placeholder={'{username}@company.local   or   COMPANY\\{username}'} value={s.bind_template} onChange={set('bind_template')} />
+        <div className="form-row">
+          <div className="form-col-half">
+            <label>New directory users become</label>
+            <select value={s.default_role} onChange={set('default_role')}>
+              <option value="viewer">Viewer (read-only)</option>
+              <option value="member">Member</option>
+              <option value="company_admin">Company admin</option>
+            </select>
+          </div>
+          <div className="form-col-half">
+            <label>…in company</label>
+            <select value={s.default_company_id || ''} onChange={set('default_company_id')}>
+              <option value="">🛠️ IT staff (no company)</option>
+              {workspace.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div><button className="btn btn-primary" onClick={async () => {
+          try { await api.put('/api/ldap-settings', s); showToast('Directory settings saved') }
+          catch (e) { showToast(e.message) }
+        }}>Save directory settings</button></div>
+      </div>
     </section>
   )
 }

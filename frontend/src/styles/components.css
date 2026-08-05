@@ -748,3 +748,4 @@ body.resizing-col { cursor: col-resize; user-select: none; }
 .update-body code { background: var(--surface-2); border-radius: 4px; padding: 1px 5px; font-size: 13px; }
 .update-body a { color: var(--primary); text-decoration: underline; }
 .mention-chip { color: var(--primary); font-weight: 600; }
+.totp-secret { font-size: 18px; letter-spacing: 2px; background: var(--surface-2); padding: 6px 12px; border-radius: 8px; }

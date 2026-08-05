@@ -781,6 +781,28 @@ def test_email_settings(user):
     return jsonify({'ok': True})
 
 
+# ---- Directory (LDAP / Active Directory) ----
+
+@bp.get('/ldap-settings')
+@login_required
+def get_ldap_settings(user):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage directory login'}), 403
+    from .. import ldap_auth
+    return jsonify({'settings': ldap_auth.get_config()})
+
+
+@bp.put('/ldap-settings')
+@login_required
+def update_ldap_settings(user):
+    if not perm.is_super(user):
+        return jsonify({'error': 'Only the super admin can manage directory login'}), 403
+    from .. import ldap_auth
+    cfg = ldap_auth.save_config(request.json or {})
+    db.session.commit()
+    return jsonify({'settings': cfg})
+
+
 # ---- Job templates ----
 
 def _clean_specs(specs):
