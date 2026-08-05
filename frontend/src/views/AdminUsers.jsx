@@ -165,6 +165,14 @@ function UsersTab() {
                 <button className="btn btn-small" onClick={() => toggleActive(u)} disabled={u.id === user.id}>
                   {u.is_active ? 'Deactivate' : 'Activate'}
                 </button>
+                {!u.is_active && user.role === 'super_admin' && (
+                  <button className="btn btn-small btn-danger" title="Permanently delete this user"
+                    onClick={async () => {
+                      if (!confirm(`Permanently delete ${u.display_name} (@${u.username})?\n\nThis cannot be undone. Their updates and history stay (as an unknown author); their access and assignments are removed. This is logged in the audit log.`)) return
+                      try { await api.del(`/api/users/${u.id}`); refreshUsers(); showToast(`${u.display_name} deleted`) }
+                      catch (e) { showToast(e.message) }
+                    }}>🗑️ Delete</button>
+                )}
               </div>
             )}
           </div>

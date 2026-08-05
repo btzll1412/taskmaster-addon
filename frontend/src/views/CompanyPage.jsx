@@ -116,13 +116,9 @@ export default function CompanyPage() {
               <span className="muted">{d.boards.length} board{d.boards.length === 1 ? '' : 's'}</span>
             </button>
           ))}
-          {can_manage && (
-            <button className="board-card board-card-add" onClick={() => setNewDept(true)}>
-              <span className="board-card-icon">＋</span>
-              <span className="board-card-name">New department</span>
-            </button>
+          {departments.length === 0 && (
+            <span className="muted">No departments{can_manage ? ' yet — use ＋ Department above.' : '.'}</span>
           )}
-          {departments.length === 0 && !can_manage && <span className="muted">No departments.</span>}
         </div>
       </section>
       )}

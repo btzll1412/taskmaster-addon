@@ -554,7 +554,7 @@ class AppSetting(db.Model):
 AUDIT_ACTION_LIST = ('board_deleted', 'item_deleted', 'group_deleted', 'column_deleted',
                      'company_deleted', 'department_deleted', 'role_deleted',
                      'user_created', 'user_deactivated', 'user_activated', 'user_role_changed',
-                     'access_granted', 'access_changed', 'access_revoked')
+                     'user_deleted', 'access_granted', 'access_changed', 'access_revoked')
 
 
 def iso(dt):
