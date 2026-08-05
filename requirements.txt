@@ -3,3 +3,4 @@ Flask-CORS>=4.0
 Flask-SQLAlchemy>=3.1
 requests>=2.31
 gunicorn>=21.2
+ldap3>=2.9

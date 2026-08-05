@@ -255,6 +255,43 @@ def update_user(actor, user_id):
     return jsonify({'user': u.to_dict(include_private=True)})
 
 
+@bp.delete('/<int:user_id>')
+@login_required
+def delete_user(actor, user_id):
+    """Permanently remove a user. Only the super admin, only for deactivated
+    accounts (deactivate first — that's the reversible step). Their updates,
+    files and history stay, shown as an unknown author; their access grants,
+    notifications and assignments are cleaned out."""
+    u = User.query.get_or_404(user_id)
+    if not perm.is_super(actor):
+        return jsonify({'error': 'Only the super admin can permanently delete users'}), 403
+    if u.id == actor.id:
+        return jsonify({'error': 'You cannot delete yourself'}), 400
+    if u.is_active:
+        return jsonify({'error': 'Deactivate the user first — deletion is permanent'}), 400
+
+    import json as _json
+    from ..models import AuthToken, BoardColumn, ItemValue, Notification
+    AccessGrant.query.filter_by(user_id=u.id).delete(synchronize_session=False)
+    AccessGrant.query.filter_by(granted_by=u.id).update({'granted_by': None}, synchronize_session=False)
+    Notification.query.filter_by(user_id=u.id).delete(synchronize_session=False)
+    AuthToken.query.filter_by(user_id=u.id).delete(synchronize_session=False)
+    # scrub them out of every people column so jobs don't point at a ghost
+    people_cols = [c.id for c in BoardColumn.query.filter_by(type='people').all()]
+    if people_cols:
+        for v in ItemValue.query.filter(ItemValue.column_id.in_(people_cols),
+                                        ItemValue.value.contains('"user_ids"')).all():
+            ids = v.value_dict().get('user_ids') or []
+            if u.id in ids:
+                v.value = _json.dumps({'user_ids': [x for x in ids if x != u.id]})
+    log_activity(actor.id, None, None, 'user_deleted',
+                 f'permanently deleted user {u.display_name} (@{u.username})',
+                 company_id=u.company_id)
+    db.session.delete(u)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 @bp.post('/<int:user_id>/password')
 @login_required
 def set_password(actor, user_id):

@@ -38,6 +38,11 @@ def ensure_schema():
         _ensure_column('users', 'hide_done', 'hide_done INTEGER DEFAULT 0')
         _ensure_column('users', 'must_change_password', 'must_change_password INTEGER DEFAULT 0')
         _ensure_column('users', 'email_notifications', 'email_notifications INTEGER DEFAULT 1')
+        _ensure_column('users', 'totp_secret', 'totp_secret VARCHAR(64)')
+    if 'automation_rules' in tables:
+        _ensure_column('automation_rules', 'trigger', "\"trigger\" VARCHAR(20) DEFAULT 'status'")
+        _ensure_column('automation_rules', 'action', "action VARCHAR(20) DEFAULT 'notify'")
+        _ensure_column('automation_rules', 'action_param', 'action_param VARCHAR(200)')
     if 'activity' in tables:
         _ensure_column('activity', 'company_id', 'company_id INTEGER')
     if 'roles' in tables:

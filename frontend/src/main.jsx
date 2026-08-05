@@ -10,3 +10,8 @@ import './styles/components.css'
 import './styles/board.css'
 
 createRoot(document.getElementById('root')).render(<App />)
+
+// PWA: offline shell + install-to-home-screen
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}))
+}

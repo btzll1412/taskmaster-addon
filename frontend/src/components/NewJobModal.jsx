@@ -10,6 +10,9 @@ export default function NewJobModal({ board, assignableUsers, onClose, onCreated
   const [templates, setTemplates] = useState(null)
   const [templateId, setTemplateId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
+  const [repeat, setRepeat] = useState('none')
+  const [weekday, setWeekday] = useState('0')
+  const [monthday, setMonthday] = useState('1')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -26,6 +29,17 @@ export default function NewJobModal({ board, assignableUsers, onClose, onCreated
     if (!name.trim() || busy) return
     setBusy(true)
     try {
+      if (repeat !== 'none') {
+        const r = await api.post('/api/recurring', {
+          board_id: board.id, name: name.trim(),
+          template_id: templateId ? Number(templateId) : null,
+          assignee_id: assigneeId ? Number(assigneeId) : null,
+          frequency: repeat, weekday: Number(weekday), monthday: Number(monthday),
+        })
+        showToast(`🔁 Recurring job scheduled — first run ${new Date(r.recurring.next_run_at).toLocaleDateString()}`)
+        onCreated()
+        return
+      }
       const payload = { name: name.trim() }
       if (templateId) payload.template_id = Number(templateId)
       if (assigneeId) payload.assignee_id = Number(assigneeId)
@@ -76,6 +90,34 @@ export default function NewJobModal({ board, assignableUsers, onClose, onCreated
             <option key={u.id} value={u.id}>{u.display_name}</option>
           ))}
         </select>
+
+        <label>Repeat</label>
+        <div className="form-row">
+          <select value={repeat} onChange={e => setRepeat(e.target.value)} style={{ flex: 1 }}>
+            <option value="none">Doesn't repeat</option>
+            <option value="daily">🔁 Every day</option>
+            <option value="weekly">🔁 Every week</option>
+            <option value="monthly">🔁 Every month</option>
+          </select>
+          {repeat === 'weekly' && (
+            <select value={weekday} onChange={e => setWeekday(e.target.value)}>
+              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                .map((d, i) => <option key={i} value={i}>{d}</option>)}
+            </select>
+          )}
+          {repeat === 'monthly' && (
+            <select value={monthday} onChange={e => setMonthday(e.target.value)}>
+              {Array.from({ length: 28 }, (_, i) => i + 1).map(d =>
+                <option key={d} value={d}>on the {d}{d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'}</option>)}
+            </select>
+          )}
+        </div>
+        {repeat !== 'none' && (
+          <p className="muted template-preview">
+            The job (with its template and assignee) will be created automatically on that schedule.
+            Manage recurring jobs on the Templates page.
+          </p>
+        )}
 
         <div className="form-row new-job-foot">
           <button className="btn btn-primary" disabled={busy}>{busy ? 'Creating…' : 'Create job'}</button>

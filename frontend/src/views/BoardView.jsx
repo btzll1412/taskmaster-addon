@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useStore } from '../store'
 import TableView from '../components/TableView'
 import KanbanView from '../components/KanbanView'
+import CalendarView from '../components/CalendarView'
 import NewJobModal from '../components/NewJobModal'
 import { Avatar, Popover, Spinner } from '../components/ui'
 
@@ -14,6 +15,7 @@ export default function BoardView() {
   const [search, setSearch] = useState('')
   const [personFilter, setPersonFilter] = useState(null)
   const [statusFilter, setStatusFilter] = useState(() => new Set())
+  const [sortBy, setSortBy] = useState(() => localStorage.getItem(`tm-sort-${boardId}`) || 'manual')
   const [menu, setMenu] = useState(false)
   const [renaming, setRenaming] = useState(false)
 
@@ -69,8 +71,35 @@ export default function BoardView() {
     }
     // filters apply to jobs; their sub-tasks follow the parent
     const keptTops = new Set(items.filter(i => !i.parent_id && keep(i)).map(i => i.id))
-    return items.filter(i => i.parent_id ? keptTops.has(i.parent_id) : keptTops.has(i.id))
-  }, [items, search, personFilter, statusFilter, columns, user.hide_done])
+    let out = items.filter(i => i.parent_id ? keptTops.has(i.parent_id) : keptTops.has(i.id))
+
+    if (sortBy !== 'manual') {
+      const dateCol = columns.find(c => c.type === 'date')
+      const prioCol = columns.find(c => c.type === 'priority')
+      const prioOrder = new Map((prioCol?.settings?.labels || []).map((l, i) => [l.id, i]))
+      const statusOrder = new Map(statusLabels.map((l, i) => [l.id, i]))
+      const key = (i) => {
+        if (sortBy === 'due') {
+          const d = dateCol && i.values[String(dateCol.id)]?.date
+          return d || '9999-12-31'
+        }
+        if (sortBy === 'priority') {
+          const id = prioCol && i.values[String(prioCol.id)]?.id
+          return prioOrder.has(id) ? prioOrder.get(id) : 99
+        }
+        if (sortBy === 'status') {
+          const id = statusCol && i.values[String(statusCol.id)]?.id
+          return statusOrder.has(id) ? statusOrder.get(id) : 99
+        }
+        return i.name.toLowerCase()
+      }
+      const tops = out.filter(i => !i.parent_id)
+        .sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
+      const subs = out.filter(i => i.parent_id)
+      out = tops.flatMap(t => [t, ...subs.filter(s => s.parent_id === t.id)])
+    }
+    return out
+  }, [items, search, personFilter, statusFilter, columns, user.hide_done, sortBy])
 
   // "+ Add job" from a company/department page lands here asking for the popup
   useEffect(() => {
@@ -153,10 +182,21 @@ export default function BoardView() {
           <button className={view === 'kanban' ? 'active' : ''} onClick={() => switchView('kanban')}>
             <span className="tab-icon">🗂</span> Kanban
           </button>
+          <button className={view === 'calendar' ? 'active' : ''} onClick={() => switchView('calendar')}>
+            <span className="tab-icon">📅</span> Calendar
+          </button>
         </div>
 
         <div className="board-toolbar">
           {canCreate && <button className="btn btn-primary" onClick={() => setShowNewJob(true)}>＋ New job</button>}
+          <select className="board-sort" value={sortBy} title="Sort jobs"
+            onChange={e => { setSortBy(e.target.value); localStorage.setItem(`tm-sort-${boardId}`, e.target.value) }}>
+            <option value="manual">↕️ Manual order</option>
+            <option value="due">📅 By due date</option>
+            <option value="priority">🚩 By priority</option>
+            <option value="status">🟢 By status</option>
+            <option value="name">🔤 By name</option>
+          </select>
           <input className="board-search" placeholder="🔍 Search this board"
             value={search} onChange={e => setSearch(e.target.value)} />
           <div className="person-filter">
@@ -203,10 +243,10 @@ export default function BoardView() {
         )}
       </div>
 
-      {view === 'table'
-        ? <TableView items={filtered} canEdit={canEdit} canCreate={canCreate}
-            canEditItems={canEditItems} usersFor={usersFor} />
-        : <KanbanView items={filtered} canEdit={canEdit} canEditItems={canEditItems} usersFor={usersFor} />}
+      {view === 'table' && <TableView items={filtered} canEdit={canEdit} canCreate={canCreate}
+        canEditItems={canEditItems} canReorder={canEditItems && sortBy === 'manual'} usersFor={usersFor} />}
+      {view === 'kanban' && <KanbanView items={filtered} canEdit={canEdit} canEditItems={canEditItems} usersFor={usersFor} />}
+      {view === 'calendar' && <CalendarView items={filtered} />}
 
       {showNewJob && (
         <NewJobModal board={board} assignableUsers={activeUsers}

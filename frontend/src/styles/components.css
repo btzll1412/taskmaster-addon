@@ -739,3 +739,13 @@ body.resizing-col { cursor: col-resize; user-select: none; }
 .forgot-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .new-user-tabs { margin-bottom: 6px; }
 .invite-hint { font-size: 13px; line-height: 1.5; margin: 0; }
+.btn-mark-done { border-color: var(--success, #00c875); color: var(--success, #00c875); }
+.btn-mark-done:hover { background: var(--success, #00c875); color: #fff; }
+.btn-done { background: var(--success, #00c875); border-color: var(--success, #00c875); color: #fff; }
+.menu-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; padding: 4px 10px 6px; }
+.board-sort { padding: 6px 8px; font-size: 13px; border-radius: 6px; }
+.update-body ul { margin: 4px 0 4px 20px; }
+.update-body code { background: var(--surface-2); border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+.update-body a { color: var(--primary); text-decoration: underline; }
+.mention-chip { color: var(--primary); font-weight: 600; }
+.totp-secret { font-size: 18px; letter-spacing: 2px; background: var(--surface-2); padding: 6px 12px; border-radius: 8px; }

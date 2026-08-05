@@ -93,6 +93,9 @@ def create_item(user, board_id):
             notify_user(assignee_id, user.id, 'assigned', board.id, item.id,
                         f'{user.display_name} assigned you to "{item.name}" on {board.name}')
 
+    if parent is None:
+        from ..services import run_automations
+        run_automations('created', board, item, user.id)
     db.session.commit()
     broadcast_board(board.id)
     ha.fire_event('taskmaster_item_created', {
@@ -238,29 +241,12 @@ def set_value(user, item_id, column_id):
             'old_status': old_desc, 'new_status': new_desc, 'changed_by': user.username,
         })
         # Notify assignees about status changes made by someone else
-        notified = set()
         for uid in people_column_user_ids(item.id):
             notify_user(uid, user.id, 'status', item.board_id, item.id,
                         f'{user.display_name} set {col.title} of "{item.name}" to {new_desc}')
-            notified.add(uid)
-        # Central automations: global rules (unless this company opted out)
-        # plus this company's own rules, matched by the new label's text
-        company_id = perm.board_company_id(board)
-        for rule in AutomationRule.query.filter_by(enabled=True).all():
-            if rule.company_id is not None and rule.company_id != company_id:
-                continue
-            if rule.company_id is None and company_id in rule.disabled_company_list():
-                continue
-            if rule.label_text and rule.label_text.strip().lower() != new_desc.strip().lower():
-                continue
-            targets = set(rule.user_id_list())
-            if rule.notify_assignees:
-                targets |= people_column_user_ids(item.id)
-            for uid in targets:
-                if uid not in notified:
-                    notify_user(uid, user.id, 'status', item.board_id, item.id,
-                                f'{col.title} of "{item.name}" on {board.name} changed to {new_desc}')
-                    notified.add(uid)
+        # Central automations (notify / set status / assign)
+        from ..services import run_automations
+        run_automations('status', board, item, user.id, new_label_text=new_desc)
         db.session.commit()
 
     return jsonify({'ok': True, 'value': value})

@@ -11,6 +11,8 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [totp, setTotp] = useState('')
+  const [totpNeeded, setTotpNeeded] = useState(false)
   const [forgot, setForgot] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotMsg, setForgotMsg] = useState(null)
@@ -33,7 +35,12 @@ export default function Login() {
       if (setupRequired) {
         await api.post('/api/auth/setup', { username, password, display_name: displayName })
       } else {
-        const res = await api.post('/api/auth/login', { username, password })
+        const res = await api.post('/api/auth/login', { username, password, totp })
+        if (res.totp_required) {
+          setTotpNeeded(true)
+          setBusy(false)
+          return
+        }
         if (res.must_change_password) {
           // temp password accepted, but no session yet — go pick a real one
           useStore.setState({ pendingUser: res.user, sessionNotice: null })
@@ -105,6 +112,13 @@ export default function Login() {
                   title={showPw ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPw(!showPw)}>{showPw ? '🙈' : '👁️'}</button>
               </div>
+              {totpNeeded && (
+                <>
+                  <label className="auth-label">2FA code</label>
+                  <input placeholder="6-digit code from your authenticator" value={totp} autoFocus
+                    maxLength={7} onChange={e => setTotp(e.target.value)} />
+                </>
+              )}
             </>
           )}
           {error && <div className="form-error">{error}</div>}
