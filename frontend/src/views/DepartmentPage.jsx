@@ -68,6 +68,7 @@ export default function DepartmentPage() {
             <button key={b.id} className="board-card" onClick={() => openBoard(b.id)}>
               <span className="board-card-icon">{b.icon}</span>
               <span className="board-card-name">{b.name}</span>
+              {b.status && <span className="board-status-chip" style={{ background: b.status.color }}>{b.status.label}</span>}
               {b.access === 'partial' && <span className="muted">🔒 limited</span>}
             </button>
           ))}

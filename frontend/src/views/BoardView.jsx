@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import TableView from '../components/TableView'
 import KanbanView from '../components/KanbanView'
 import CalendarView from '../components/CalendarView'
 import NewJobModal from '../components/NewJobModal'
-import { Avatar, Popover, Spinner } from '../components/ui'
+import { Avatar, OverlayPopover, Popover, Spinner } from '../components/ui'
 
 export default function BoardView() {
   const { boardData, boardLoading, route, users, workspace, refreshBoard, refreshBoards, navigate, showToast } = useStore()
@@ -145,6 +145,8 @@ export default function BoardView() {
           ) : (
             <h2 onClick={() => canEdit && setRenaming(true)} title={canEdit ? 'Click to rename' : undefined}>{board.name}</h2>
           )}
+          <BoardStatusButton board={board} labels={statusLabels}
+            canSet={fullAccess && canEditItems} act={act} />
           {!canEdit && <span className="archived-tag" title="You see only the jobs shared with you">Limited access</span>}
           {board.archived && <span className="archived-tag">Archived</span>}
           <div className="topbar-anchor" style={canEdit ? undefined : { display: 'none' }}>
@@ -253,6 +255,51 @@ export default function BoardView() {
           onClose={() => setShowNewJob(false)}
           onCreated={async () => { setShowNewJob(false); await refreshBoard() }}
           showToast={showToast} />
+      )}
+    </div>
+  )
+}
+
+/** Status of the entire board/job, shown next to its name. Uses the board's own
+ * status labels so it matches what the rows use. */
+function BoardStatusButton({ board, labels, canSet, act }) {
+  const [open, setOpen] = useState(false)
+  const anchor = useRef(null)
+  const options = labels.length > 0 ? labels : [
+    { id: '_w', label: 'Working on it', color: '#fdab3d' },
+    { id: '_s', label: 'Stuck', color: '#e2445c' },
+    { id: '_d', label: 'Done', color: '#00c875' },
+  ]
+  const current = board.status
+  if (!canSet && !current) return null
+  const done = options.find(l => l.label.trim().toLowerCase() === 'done')
+  const set = (value) => {
+    setOpen(false)
+    act(api.put(`/api/boards/${board.id}/status`, { status: value }))
+  }
+  return (
+    <div className="topbar-anchor" ref={anchor}>
+      <button
+        className={`btn btn-small ${current ? 'btn-status-current' : 'btn-mark-done'}`}
+        style={current ? { background: current.color, borderColor: current.color, color: '#fff' } : undefined}
+        title="Status of this whole job board" disabled={!canSet}
+        onClick={() => canSet && setOpen(true)}>
+        {current ? current.label : done ? '✓ Mark done' : '＋ Status'}
+      </button>
+      {open && (
+        <OverlayPopover anchorRef={anchor} onClose={() => setOpen(false)} width={200}>
+          {options.map(l => (
+            <button key={l.id} className="label-option" style={{ background: l.color }}
+              onClick={() => set({ label: l.label, color: l.color })}>
+              {l.label}{current?.label === l.label ? ' ✓' : ''}
+            </button>
+          ))}
+          {current && (
+            <button className="label-option label-clear" onClick={() => set(null)}>
+              Clear status
+            </button>
+          )}
+        </OverlayPopover>
       )}
     </div>
   )
