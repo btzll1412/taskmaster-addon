@@ -123,6 +123,34 @@ def update_board(user, board_id):
     return jsonify({'board': board.to_dict()})
 
 
+@bp.put('/boards/<int:board_id>/status')
+@login_required
+def set_board_status(user, board_id):
+    """Status of the whole board/job — anyone who can edit jobs on it can set it,
+    unlike board structure edits which need manage_boards."""
+    board = Board.query.get_or_404(board_id)
+    if perm.board_access(user, board) != 'full':
+        return jsonify({'error': 'You do not have access to this board'}), 403
+    if not perm.has_cap(user, perm.CAP_EDIT):
+        return jsonify({'error': 'Your role cannot edit jobs'}), 403
+    value = (request.json or {}).get('status')
+    if value is None:
+        board.status = None
+        log_activity(user.id, board.id, None, 'board_status',
+                     f'cleared the status of board "{board.name}"')
+    else:
+        label = str(value.get('label') or '').strip()[:60]
+        color = str(value.get('color') or '#579bfc').strip()[:16]
+        if not label:
+            return jsonify({'error': 'Status label is required'}), 400
+        board.status = json.dumps({'label': label, 'color': color})
+        log_activity(user.id, board.id, None, 'board_status',
+                     f'set board "{board.name}" to "{label}"')
+    db.session.commit()
+    broadcast_board(board.id)
+    return jsonify({'board': board.to_dict()})
+
+
 @bp.delete('/boards/<int:board_id>')
 @login_required
 def delete_board(user, board_id):

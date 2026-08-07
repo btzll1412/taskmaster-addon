@@ -171,6 +171,10 @@
 .board-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 .board-card-icon { font-size: 28px; }
 .board-card-name { font-weight: 600; font-size: 15px; }
+.board-status-chip {
+  font-size: 11px; font-weight: 600; color: #fff;
+  padding: 2px 9px; border-radius: 10px; white-space: nowrap;
+}
 .activity-feed { display: flex; flex-direction: column; gap: 2px; }
 .activity-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 6px; text-align: left;

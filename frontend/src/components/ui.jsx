@@ -56,10 +56,13 @@ export function OverlayPopover({ anchorRef, onClose, children, width = 230 }) {
   return createPortal(
     <>
       {/* invisible backdrop: closing the popover swallows the tap instead of
-          clicking whatever sits underneath (critical on touch screens) */}
+          clicking whatever sits underneath. Close on click, not touchstart/mousedown:
+          the backdrop must still be mounted when the browser fires the tap's
+          compatibility click, or that click lands on whatever is underneath
+          (touchstart preventDefault can't stop it — React's root listener is passive). */}
       <div className="popover-overlay-backdrop"
-        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose() }}
-        onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onClose() }} />
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+        onClick={(e) => { e.stopPropagation(); onClose() }} />
       <div ref={ref} className="popover popover-overlay" style={style}
         onClick={(e) => e.stopPropagation()}>
         {children}

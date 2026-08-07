@@ -66,6 +66,8 @@ class Board(db.Model):
     company_id = db.Column(db.Integer, db.ForeignKey('companies.id'))  # direct-under-company boards
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     archived = db.Column(db.Boolean, default=False)
+    # overall status of the whole board/job: JSON {"label": ..., "color": ...}
+    status = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utcnow)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
@@ -81,6 +83,7 @@ class Board(db.Model):
             'company_id': self.company_id,
             'owner_id': self.owner_id,
             'archived': self.archived,
+            'status': json.loads(self.status) if self.status else None,
             'created_at': iso(self.created_at),
             'updated_at': iso(self.updated_at),
         }

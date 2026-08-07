@@ -254,7 +254,13 @@
 
   /* Job panel: full-screen sheet with safe-area breathing room */
   .item-panel { width: 100vw; padding-bottom: env(safe-area-inset-bottom); }
-  .panel-head { padding: 14px 14px 8px; flex-wrap: wrap; }
+  /* Job panel header: title + close on row one, action buttons on their own row.
+     Without this a long job name renders underneath the buttons. */
+  .panel-head { padding: 14px 14px 8px; flex-wrap: wrap; align-items: flex-start; row-gap: 4px; }
+  .panel-head-main { flex: 1 1 calc(100% - 48px); min-width: calc(100% - 48px); }
+  .panel-head > .icon-btn { order: 1; }
+  .panel-head .topbar-anchor { order: 2; }
+  .panel-name, .panel-name-input { overflow-wrap: anywhere; }
   .panel-fields { padding: 8px 14px 12px; }
   .panel-body { padding: 14px; }
   .panel-tabs { padding: 8px 14px 0; overflow-x: auto; }

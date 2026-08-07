@@ -53,6 +53,7 @@ def ensure_schema():
         _ensure_column('items', 'parent_id', 'parent_id INTEGER')
     if 'boards' in tables:
         _ensure_column('boards', 'company_id', 'company_id INTEGER')
+        _ensure_column('boards', 'status', 'status TEXT')
     if 'companies' in tables:
         for col in ('address TEXT', 'phone VARCHAR(60)', 'phone2 VARCHAR(60)',
                     'email VARCHAR(200)', 'contact_name VARCHAR(200)', 'notes TEXT'):
