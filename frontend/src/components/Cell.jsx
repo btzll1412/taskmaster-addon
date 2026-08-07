@@ -151,14 +151,31 @@ function PeopleCell({ value, users, onChange, editing, setEditing, compact }) {
 function DateCell({ value, onChange, editing, setEditing }) {
   const date = value?.date
   const anchor = useRef(null)
+  // Save on close, not on every change: input type=date fires onChange for each
+  // keystroke, so saving there commits half-typed years like 0002 and slams the
+  // picker shut while the user is still typing.
+  const pending = useRef(undefined)
+  const close = () => {
+    const v = pending.current
+    pending.current = undefined
+    setEditing(false)
+    if (v !== undefined && v !== (date || '')) onChange(v ? { date: v } : null)
+  }
   return (
     <div ref={anchor} className={`cell cell-date ${dueClass(date)}`} onClick={() => setEditing(true)}>
       {date ? fmtDate(date) : <span className="cell-empty-icon">📅</span>}
       {editing && (
-        <OverlayPopover anchorRef={anchor} onClose={() => setEditing(false)} width={230}>
+        <OverlayPopover anchorRef={anchor} onClose={close} width={230}>
           <input type="date" autoFocus defaultValue={date || ''}
-            onChange={e => { if (e.target.value) { onChange({ date: e.target.value }); setEditing(false) } }} />
-          {date && <button className="link-btn" onClick={() => { onChange(null); setEditing(false) }}>Clear date</button>}
+            onChange={e => { pending.current = e.target.value }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') close()
+              if (e.key === 'Escape') pending.current = undefined
+            }} />
+          <div className="date-popover-actions">
+            <button className="btn btn-small btn-primary" onClick={close}>Save</button>
+            {date && <button className="link-btn" onClick={() => { pending.current = undefined; setEditing(false); onChange(null) }}>Clear date</button>}
+          </div>
         </OverlayPopover>
       )}
     </div>

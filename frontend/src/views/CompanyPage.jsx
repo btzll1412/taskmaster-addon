@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
-import { Avatar, Modal, EmojiPicker } from '../components/ui'
+import { Avatar, Modal, EmojiPicker, hideDoneBoard } from '../components/ui'
 
 const ROLE_LABEL = {
   super_admin: 'Super admin', admin: 'Admin (IT staff)',
@@ -90,7 +90,7 @@ export default function CompanyPage() {
       <section className="entity-section">
         <h3>🧰 Company jobs <span className="muted">(no department)</span></h3>
         <div className="board-cards">
-          {boards.filter(b => !b.archived).map(b => (
+          {boards.filter(b => !b.archived && !hideDoneBoard(user, b)).map(b => (
             <button key={b.id} className="board-card" onClick={() => openBoard(b.id)}>
               <span className="board-card-icon">{b.icon}</span>
               <span className="board-card-name">{b.name}</span>
@@ -98,6 +98,11 @@ export default function CompanyPage() {
               {b.access === 'partial' && <span className="muted">🔒 limited</span>}
             </button>
           ))}
+          {boards.filter(b => !b.archived && hideDoneBoard(user, b)).length > 0 && (
+            <span className="muted hidden-done-note">
+              ✅ {boards.filter(b => !b.archived && hideDoneBoard(user, b)).length} finished — hidden by your "hide done" setting
+            </span>
+          )}
           {boards.filter(b => !b.archived).length === 0 && (
             <span className="muted">No job boards yet{can_create_board ? ' — use ＋ Job board above.' : '.'}</span>
           )}
