@@ -55,14 +55,30 @@ export function OverlayPopover({ anchorRef, onClose, children, width = 230 }) {
   if (!style) return null
   return createPortal(
     <>
-      {/* invisible backdrop: closing the popover swallows the tap instead of
-          clicking whatever sits underneath. Close on click, not touchstart/mousedown:
-          the backdrop must still be mounted when the browser fires the tap's
-          compatibility click, or that click lands on whatever is underneath
-          (touchstart preventDefault can't stop it — React's root listener is passive). */}
+      {/* invisible backdrop: closing the popover must swallow a touch tap
+          instead of pressing whatever sits underneath — but a mouse click
+          should need only ONE click, so for mouse we close and then replay
+          the click on the covered element. Close on click, not
+          touchstart/mousedown: the backdrop must still be mounted when the
+          browser fires the tap's compatibility click, or that click lands on
+          whatever is underneath (touchstart preventDefault can't stop it —
+          React's root listener is passive). */}
       <div className="popover-overlay-backdrop"
         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
-        onClick={(e) => { e.stopPropagation(); onClose() }} />
+        onClick={(e) => {
+          e.stopPropagation()
+          onClose()
+          const pt = e.nativeEvent?.pointerType
+          const isTouch = pt === 'touch' ||
+            (pt === undefined && window.matchMedia('(pointer: coarse)').matches)
+          if (!isTouch) {
+            const { clientX, clientY } = e
+            setTimeout(() => {
+              const el = document.elementFromPoint(clientX, clientY)
+              if (el && typeof el.click === 'function') el.click()
+            }, 0)
+          }
+        }} />
       <div ref={ref} className="popover popover-overlay" style={style}
         onClick={(e) => e.stopPropagation()}>
         {children}
