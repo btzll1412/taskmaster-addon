@@ -1,3 +1,14 @@
+/* ---------- Touch responsiveness ----------
+   manipulation = pan + pinch-zoom only: the browser stops waiting ~300ms on
+   every tap to rule out a double-tap zoom, so buttons react on the first tap. */
+html { touch-action: manipulation; }
+/* A slightly-long press must press, not start selecting text */
+button, .cell, .menu-item, .label-option, .people-option, .board-card,
+.overview-card, .kanban-card, .tree-row, .nav-item, .item-name-cell,
+.status-filter-chip, .calendar-job, .view-tabs, .panel-tabs {
+  -webkit-user-select: none; user-select: none;
+}
+
 /* ---------- Login ---------- */
 .login-page {
   display: flex; align-items: center; justify-content: center; height: 100vh;

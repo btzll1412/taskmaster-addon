@@ -4,6 +4,10 @@ import { useStore } from '../store'
 import Cell from './Cell'
 import { OverlayPopover } from './ui'
 
+// HTML5 drag doesn't work by touch, but the draggable attribute makes some
+// mobile browsers hesitate on taps — so only enable it for mouse users.
+const TOUCH_SCREEN = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+
 const COLUMN_TYPES = [
   { type: 'status', label: 'Status', icon: '🟢' },
   { type: 'priority', label: 'Priority', icon: '🚩' },
@@ -165,7 +169,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
                     subCount={(subsByParent[item.id] || []).length}
                     isExpanded={expanded.has(item.id)}
                     onToggleExpand={() => toggleExpand(item.id)}
-                    draggable={canReorder}
+                    draggable={canReorder && !TOUCH_SCREEN}
                     onDragStart={() => { dragRef.current = item.id; setDragId(item.id) }}
                     onDropRow={() => dropOn(item)}
                     isDragging={dragId === item.id} />

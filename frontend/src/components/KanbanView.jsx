@@ -3,6 +3,9 @@ import { api } from '../api'
 import { useStore } from '../store'
 import { AvatarStack, fmtDate, dueClass } from './ui'
 
+// see TableView: draggable makes some mobile browsers hesitate on taps
+const TOUCH_SCREEN = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+
 /** Kanban view: lanes come from the labels of a status-type column. */
 export default function KanbanView({ items, canEdit, canEditItems, usersFor }) {
   items = items.filter(i => !i.parent_id)
@@ -75,7 +78,7 @@ export default function KanbanView({ items, canEdit, canEditItems, usersFor }) {
               <div className="lane-cards">
                 {laneList.map(item => (
                   <KanbanCard key={item.id} item={item} users={usersFor ? usersFor(item) : users} laneColor={lane.color}
-                    draggable={!!canEditItems}
+                    draggable={!!canEditItems && !TOUCH_SCREEN}
                     peopleCol={peopleCol} dateCol={dateCol} prioCol={prioCol}
                     onOpen={() => openItem(item.id)} />
                 ))}
