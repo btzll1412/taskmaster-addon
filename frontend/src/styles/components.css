@@ -210,7 +210,10 @@ button, .cell, .menu-item, .label-option, .people-option, .board-card,
   padding: 10px 14px; margin-bottom: 6px;
 }
 .my-work-row:hover { box-shadow: var(--shadow); }
-.mw-board { color: var(--text-muted); font-size: 13px; width: 160px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-boardcol { display: flex; flex-direction: column; gap: 1px; width: 160px; flex-shrink: 0; min-width: 0; }
+.mw-board { color: var(--text-muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-company { color: var(--text-muted); font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-overdue-badge { margin-left: 10px; font-size: 12px; font-weight: 600; color: var(--danger); }
 .mw-name { flex: 1; font-weight: 500; }
 .mw-date { font-size: 13px; color: var(--text-muted); }
 .mw-date.overdue { color: var(--danger); font-weight: 600; }
