@@ -186,6 +186,8 @@ button, .cell, .menu-item, .label-option, .people-option, .board-card,
   font-size: 11px; font-weight: 600; color: #fff;
   padding: 2px 9px; border-radius: 10px; white-space: nowrap;
 }
+.hidden-done-note { font-size: 13px; align-self: center; }
+.date-popover-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .activity-feed { display: flex; flex-direction: column; gap: 2px; }
 .activity-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 6px; text-align: left;
@@ -208,7 +210,10 @@ button, .cell, .menu-item, .label-option, .people-option, .board-card,
   padding: 10px 14px; margin-bottom: 6px;
 }
 .my-work-row:hover { box-shadow: var(--shadow); }
-.mw-board { color: var(--text-muted); font-size: 13px; width: 160px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-boardcol { display: flex; flex-direction: column; gap: 1px; width: 160px; flex-shrink: 0; min-width: 0; }
+.mw-board { color: var(--text-muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-company { color: var(--text-muted); font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-overdue-badge { margin-left: 10px; font-size: 12px; font-weight: 600; color: var(--danger); }
 .mw-name { flex: 1; font-weight: 500; }
 .mw-date { font-size: 13px; color: var(--text-muted); }
 .mw-date.overdue { color: var(--danger); font-weight: 600; }

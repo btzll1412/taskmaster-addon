@@ -63,8 +63,22 @@ def my_work(user):
     item_ids = {v.item_id for v in values
                 if user.id in (v.value_dict().get('user_ids') or [])}
     items = Item.query.filter(Item.id.in_(item_ids)).all() if item_ids else []
-    boards = {b.id: b.to_dict() for b in
-              Board.query.filter(Board.id.in_({i.board_id for i in items})).all()}
+    board_rows = Board.query.filter(Board.id.in_({i.board_id for i in items})).all()
+    dept_ids = {b.department_id for b in board_rows if b.department_id}
+    depts = ({d.id: d for d in Department.query.filter(Department.id.in_(dept_ids)).all()}
+             if dept_ids else {})
+    comp_ids = ({b.company_id for b in board_rows if b.company_id}
+                | {d.company_id for d in depts.values()})
+    comps = ({c.id: c for c in Company.query.filter(Company.id.in_(comp_ids)).all()}
+             if comp_ids else {})
+    boards = {}
+    for b in board_rows:
+        d = b.to_dict()
+        cid = b.company_id or (depts[b.department_id].company_id
+                               if b.department_id in depts else None)
+        d['company_id'] = cid
+        d['company_name'] = comps[cid].name if cid in comps else None
+        boards[b.id] = d
     groups = {g.id: g.to_dict() for g in
               BoardGroup.query.filter(BoardGroup.id.in_({i.group_id for i in items})).all()}
     all_values = values_for_items([i.id for i in items])

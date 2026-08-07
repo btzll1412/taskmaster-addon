@@ -155,6 +155,12 @@ export function EmojiPicker({ value, onChange }) {
 
 // ---- date helpers ----
 
+/** The per-user "hide done" preference also hides whole boards marked Done. */
+export function hideDoneBoard(user, board) {
+  return !!(user?.hide_done && board?.status &&
+    board.status.label.trim().toLowerCase() === 'done')
+}
+
 export function fmtDate(isoDate) {
   if (!isoDate) return ''
   const d = new Date(isoDate + 'T00:00:00')

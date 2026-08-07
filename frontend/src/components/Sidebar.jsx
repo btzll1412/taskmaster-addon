@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
-import { Modal, EmojiPicker } from './ui'
+import { Modal, EmojiPicker, hideDoneBoard } from './ui'
 
 function usePersistedSet(key) {
   const [set, setSet] = useState(() => {
@@ -86,7 +86,7 @@ export default function Sidebar() {
                   onClick={() => navigate({ page: 'company', companyId: c.id })}>🏛️ {c.name}</span>
               </div>
 
-              {!closedCompanies.has(c.id) && (c.boards || []).filter(b => !b.archived).map(b => (
+              {!closedCompanies.has(c.id) && (c.boards || []).filter(b => !b.archived && !hideDoneBoard(user, b)).map(b => (
                 <div key={'b' + b.id} className="tree-dept">
                   <BoardNode board={b}
                     active={route.page === 'board' && route.boardId === b.id}
@@ -106,7 +106,7 @@ export default function Sidebar() {
                         onClick={() => setNewBoardDept(d)}>＋</button>
                     )}
                   </div>
-                  {!closedDepts.has(d.id) && d.boards.filter(b => !b.archived).map(b => (
+                  {!closedDepts.has(d.id) && d.boards.filter(b => !b.archived && !hideDoneBoard(user, b)).map(b => (
                     <BoardNode key={b.id} board={b}
                       active={route.page === 'board' && route.boardId === b.id}
                       onOpen={() => openBoard(b.id)} showToast={showToast} />

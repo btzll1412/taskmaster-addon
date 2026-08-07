@@ -25,27 +25,25 @@ export default function MyWork() {
       }
     }).filter(i => i.board && !i.board.archived)
 
+    // one section per company; inside: dated jobs first (soonest on top,
+    // overdue naturally rise), then no-date, Done last
     const today = new Date(); today.setHours(0, 0, 0, 0)
-    const week = new Date(today); week.setDate(week.getDate() + 7)
-    const buckets = { overdue: [], today: [], week: [], later: [], nodate: [], done: [] }
+    const isDone = (i) => i.status?.label?.toLowerCase() === 'done'
+    const isOverdue = (i) => !isDone(i) && i.due && new Date(i.due + 'T00:00:00') < today
+    const rank = (i) => isDone(i) ? 2 : i.due ? 0 : 1
+    const byCompany = new Map()
     for (const i of items) {
-      if (i.status?.label?.toLowerCase() === 'done') { buckets.done.push(i); continue }
-      if (!i.due) { buckets.nodate.push(i); continue }
-      const d = new Date(i.due + 'T00:00:00')
-      if (d < today) buckets.overdue.push(i)
-      else if (d.getTime() === today.getTime()) buckets.today.push(i)
-      else if (d <= week) buckets.week.push(i)
-      else buckets.later.push(i)
+      const key = i.board.company_name || 'Other'
+      if (!byCompany.has(key)) byCompany.set(key, [])
+      byCompany.get(key).push(i)
     }
-    for (const k of Object.keys(buckets)) buckets[k].sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : 1)
-    return [
-      { key: 'overdue', title: '🔴 Overdue', items: buckets.overdue },
-      { key: 'today', title: '⭐ Today', items: buckets.today },
-      { key: 'week', title: '📆 This week', items: buckets.week },
-      { key: 'later', title: '⏳ Later', items: buckets.later },
-      { key: 'nodate', title: '🗓 No due date', items: buckets.nodate },
-      { key: 'done', title: '✅ Done', items: buckets.done },
-    ].filter(s => s.items.length > 0)
+    return [...byCompany.entries()]
+      .map(([company, list]) => {
+        list.sort((a, b) => rank(a) - rank(b)
+          || ((a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : 0))
+        return { company, items: list, overdue: list.filter(isOverdue).length }
+      })
+      .sort((a, b) => b.overdue - a.overdue || a.company.localeCompare(b.company))
   }, [myWork])
 
   if (!myWork) return <div className="muted my-work-loading">Loading…</div>
@@ -58,12 +56,16 @@ export default function MyWork() {
         <div className="my-work-empty">🎉 Nothing on your plate — you'll see any job or task here as soon as someone puts you in its People column.</div>
       )}
       {sections.map(s => (
-        <section key={s.key} className="my-work-section">
-          <h3>{s.title} <span className="muted">({s.items.length})</span></h3>
+        <section key={s.company} className="my-work-section">
+          <h3>🏛️ {s.company} <span className="muted">({s.items.length})</span>
+            {s.overdue > 0 && <span className="mw-overdue-badge">🔴 {s.overdue} overdue</span>}</h3>
           {s.items.map(i => (
             <button key={i.id} className="my-work-row"
               onClick={() => { openBoard(i.board_id); openItem(i.id) }}>
-              <span className="mw-board">{i.board.icon} {i.board.name}</span>
+              <span className="mw-boardcol">
+                <span className="mw-board">{i.board.icon} {i.board.name}</span>
+                {i.board.company_name && <span className="mw-company">{i.board.company_name}</span>}
+              </span>
               <span className="mw-name">{i.parent_name ? <><span className="muted">{i.parent_name} ↳ </span>{i.name}</> : i.name}</span>
               {i.status && <span className="chip" style={{ background: i.status.color }}>{i.status.label}</span>}
               {i.due && <span className={`mw-date ${dueClass(i.due)}`}>{fmtDate(i.due)}</span>}
