@@ -412,9 +412,10 @@ def download_file(user, file_id):
     # docs, zip, ...) is a forced download: an inline SVG can carry scripts
     # that would run inside the portal's own origin (stored XSS).
     ext = asset.original_filename.rsplit('.', 1)[-1].lower() if '.' in asset.original_filename else ''
+    force_download = request.args.get('dl') == '1'  # gallery's download button
     resp = send_from_directory(UPLOAD_DIR, asset.filename,
                                download_name=asset.original_filename,
-                               as_attachment=ext not in SAFE_INLINE_EXTENSIONS)
+                               as_attachment=force_download or ext not in SAFE_INLINE_EXTENSIONS)
     resp.headers['X-Content-Type-Options'] = 'nosniff'
     return resp
 
