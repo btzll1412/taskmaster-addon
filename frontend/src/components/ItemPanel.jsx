@@ -227,36 +227,82 @@ export default function ItemPanel({ itemId }) {
 }
 
 /** Full-screen photo viewer over all images attached to the job:
- * ← → arrows, keyboard, swipe on touch, and a download button. */
+ * ← → arrows, keyboard, swipe on touch, zoom (buttons / wheel / double-click),
+ * drag to pan while zoomed, rotate, and a download button. */
+const ZOOM_MIN = 0.5
+const ZOOM_MAX = 5
+
 function Lightbox({ images, index, onIndex, onClose }) {
   const img = images[index]
   const touchX = useRef(null)
+  const drag = useRef(null)
+  const boxRef = useRef(null)
+  const [zoom, setZoom] = useState(1)
+  const [rot, setRot] = useState(0)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
   const prev = () => onIndex((index - 1 + images.length) % images.length)
   const next = () => onIndex((index + 1) % images.length)
+  const zoomTo = (z) => {
+    const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z))
+    setZoom(clamped)
+    if (clamped <= 1) setPan({ x: 0, y: 0 })
+  }
+  const reset = () => { setZoom(1); setRot(0); setPan({ x: 0, y: 0 }) }
+
+  // fresh view whenever the photo changes
+  useEffect(() => { reset() }, [index])
 
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowRight') next()
       if (e.key === 'ArrowLeft') prev()
+      if (e.key === '+' || e.key === '=') zoomTo(zoom * 1.25)
+      if (e.key === '-') zoomTo(zoom / 1.25)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [index, images.length])
+  }, [index, images.length, zoom])
+
+  // wheel-zoom needs a manually attached NON-passive listener —
+  // React's root wheel handler is passive, so preventDefault would be ignored
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    function onWheel(e) {
+      e.preventDefault()
+      setZoom(z => {
+        const nz = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))
+        if (nz <= 1) setPan({ x: 0, y: 0 })
+        return nz
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   if (!img) return null
   return createPortal(
-    <div className="lightbox" onClick={onClose}
-      onTouchStart={e => { touchX.current = e.touches[0].clientX }}
+    <div className="lightbox" ref={boxRef} onClick={onClose}
+      onTouchStart={e => { if (zoom === 1) touchX.current = e.touches[0].clientX }}
       onTouchEnd={e => {
         if (touchX.current === null) return
         const dx = e.changedTouches[0].clientX - touchX.current
         touchX.current = null
-        if (images.length > 1 && Math.abs(dx) > 50) (dx < 0 ? next : prev)()
+        if (zoom === 1 && images.length > 1 && Math.abs(dx) > 50) (dx < 0 ? next : prev)()
       }}>
       <div className="lightbox-top" onClick={e => e.stopPropagation()}>
         <span className="lightbox-name" title={img.original_filename}>{img.original_filename}</span>
         {images.length > 1 && <span className="lightbox-count">{index + 1} / {images.length}</span>}
+        <button className="icon-btn lightbox-btn" title="Zoom out (−)"
+          onClick={() => zoomTo(zoom / 1.25)}>−</button>
+        <span className="lightbox-zoom" title="Click to reset zoom, rotation and position"
+          onClick={reset} role="button">{Math.round(zoom * 100)}%</span>
+        <button className="icon-btn lightbox-btn" title="Zoom in (+)"
+          onClick={() => zoomTo(zoom * 1.25)}>＋</button>
+        <button className="icon-btn lightbox-btn" title="Rotate 90°"
+          onClick={() => setRot(r => (r + 90) % 360)}>↻</button>
         <a className="icon-btn lightbox-btn" title="Download this photo"
           href={`/api/files/${img.id}/download?dl=1`}>⬇️</a>
         <button className="icon-btn lightbox-btn" title="Close" onClick={onClose}>✕</button>
@@ -265,8 +311,24 @@ function Lightbox({ images, index, onIndex, onClose }) {
         <button className="lightbox-arrow lightbox-prev" title="Previous photo"
           onClick={e => { e.stopPropagation(); prev() }}>‹</button>
       )}
-      <img className="lightbox-img" src={`/api/files/${img.id}/download`}
-        alt={img.original_filename} onClick={e => e.stopPropagation()} />
+      <img className={`lightbox-img ${dragging ? 'lightbox-dragging' : ''} ${zoom > 1 ? 'lightbox-zoomed' : ''}`}
+        src={`/api/files/${img.id}/download`} alt={img.original_filename} draggable={false}
+        style={{ transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rot}deg) scale(${zoom})` }}
+        onClick={e => e.stopPropagation()}
+        onDoubleClick={e => { e.stopPropagation(); zoom > 1 ? reset() : zoomTo(2) }}
+        onPointerDown={e => {
+          if (zoom <= 1) return
+          e.preventDefault(); e.stopPropagation()
+          e.currentTarget.setPointerCapture(e.pointerId)
+          drag.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
+          setDragging(true)
+        }}
+        onPointerMove={e => {
+          if (!drag.current) return
+          setPan({ x: e.clientX - drag.current.x, y: e.clientY - drag.current.y })
+        }}
+        onPointerUp={() => { drag.current = null; setDragging(false) }}
+        onPointerCancel={() => { drag.current = null; setDragging(false) }} />
       {images.length > 1 && (
         <button className="lightbox-arrow lightbox-next" title="Next photo"
           onClick={e => { e.stopPropagation(); next() }}>›</button>

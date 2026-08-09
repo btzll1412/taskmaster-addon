@@ -224,6 +224,13 @@ button, .cell, .menu-item, .label-option, .people-option, .board-card,
 .lightbox-img {
   max-width: calc(100vw - 130px); max-height: calc(100dvh - 90px);
   border-radius: 6px; box-shadow: var(--shadow-lg); user-select: none;
+  transition: transform .15s ease; touch-action: none;
+}
+.lightbox-img.lightbox-zoomed { cursor: grab; }
+.lightbox-img.lightbox-dragging { cursor: grabbing; transition: none; }
+.lightbox-zoom {
+  color: #fff; font-size: 13px; font-weight: 600; min-width: 46px; text-align: center;
+  cursor: pointer; opacity: .9;
 }
 .lightbox-top {
   position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center;
