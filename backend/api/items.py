@@ -398,6 +398,9 @@ def upload_file(user, item_id):
     return jsonify({'file': asset.to_dict()}), 201
 
 
+SAFE_INLINE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'pdf', 'txt'}
+
+
 @bp.get('/files/<int:file_id>/download')
 @login_required
 def download_file(user, file_id):
@@ -405,8 +408,15 @@ def download_file(user, file_id):
     item = db.session.get(Item, asset.item_id)
     if item and not perm.can_view_item(user, item):
         return jsonify({'error': 'No access to this file'}), 403
-    return send_from_directory(UPLOAD_DIR, asset.filename,
-                               download_name=asset.original_filename)
+    # Only harmless types may render inline. Everything else (svg, office
+    # docs, zip, ...) is a forced download: an inline SVG can carry scripts
+    # that would run inside the portal's own origin (stored XSS).
+    ext = asset.original_filename.rsplit('.', 1)[-1].lower() if '.' in asset.original_filename else ''
+    resp = send_from_directory(UPLOAD_DIR, asset.filename,
+                               download_name=asset.original_filename,
+                               as_attachment=ext not in SAFE_INLINE_EXTENSIONS)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
 
 
 @bp.delete('/files/<int:file_id>')
