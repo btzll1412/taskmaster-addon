@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../api'
 import { useStore } from '../store'
 import Cell from './Cell'
@@ -10,6 +11,10 @@ export default function ItemPanel({ itemId }) {
   const [tab, setTab] = useState('updates')
   const [body, setBody] = useState('')
   const fileInput = useRef(null)
+  // photo gallery (lightbox) over the item's images
+  const galleryRef = useRef(null)
+  const [galleryIdx, setGalleryIdx] = useState(null)
+  const setGallery = (v) => { galleryRef.current = v; setGalleryIdx(v) }
 
   async function load() {
     try { setData(await api.get(`/api/items/${itemId}`)) }
@@ -20,13 +25,15 @@ export default function ItemPanel({ itemId }) {
   useEffect(() => { if (data) load() }, [boardData])
 
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') closeItem() }
+    // when the photo gallery is open, Escape closes it — not the whole panel
+    function onKey(e) { if (e.key === 'Escape' && galleryRef.current === null) closeItem() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
   if (!data) return null
   const { item, updates, files, activity, subitems, parent } = data
+  const imageFiles = files.filter(f => f.is_image)
   const cap = (c) => (user.capabilities || []).includes(c)
   const canEditItems = cap('edit_jobs')
   const canCreate = cap('create_jobs')
@@ -164,15 +171,23 @@ export default function ItemPanel({ itemId }) {
                 {files.map(f => (
                   <div key={f.id} className="file-card">
                     {f.is_image ? (
-                      <a href={`/api/files/${f.id}/download`} target="_blank" rel="noreferrer">
+                      <button className="file-thumb" title="View photo"
+                        onClick={() => setGallery(imageFiles.findIndex(x => x.id === f.id))}>
                         <img src={`/api/files/${f.id}/download`} alt={f.original_filename} loading="lazy" />
-                      </a>
+                      </button>
                     ) : (
                       <a className="file-icon" href={`/api/files/${f.id}/download`} target="_blank" rel="noreferrer">📄</a>
                     )}
                     <div className="file-meta">
+                      {f.is_image ? (
+                        <button className="file-name link-btn" title={f.original_filename}
+                          onClick={() => setGallery(imageFiles.findIndex(x => x.id === f.id))}>
+                          {f.original_filename}
+                        </button>
+                      ) : (
                       <a href={`/api/files/${f.id}/download`} target="_blank" rel="noreferrer" className="file-name"
                         title={f.original_filename}>{f.original_filename}</a>
+                      )}
                       <span className="muted">{fmtSize(f.file_size)} · {userById(f.user_id)?.display_name || ''}</span>
                     </div>
                     {(f.user_id === user.id || user.role === 'super_admin' || user.role === 'company_admin') && (
@@ -203,7 +218,61 @@ export default function ItemPanel({ itemId }) {
           )}
         </div>
       </aside>
+      {galleryIdx !== null && imageFiles[galleryIdx] && (
+        <Lightbox images={imageFiles} index={galleryIdx}
+          onIndex={setGallery} onClose={() => setGallery(null)} />
+      )}
     </>
+  )
+}
+
+/** Full-screen photo viewer over all images attached to the job:
+ * ← → arrows, keyboard, swipe on touch, and a download button. */
+function Lightbox({ images, index, onIndex, onClose }) {
+  const img = images[index]
+  const touchX = useRef(null)
+  const prev = () => onIndex((index - 1 + images.length) % images.length)
+  const next = () => onIndex((index + 1) % images.length)
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight') next()
+      if (e.key === 'ArrowLeft') prev()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [index, images.length])
+
+  if (!img) return null
+  return createPortal(
+    <div className="lightbox" onClick={onClose}
+      onTouchStart={e => { touchX.current = e.touches[0].clientX }}
+      onTouchEnd={e => {
+        if (touchX.current === null) return
+        const dx = e.changedTouches[0].clientX - touchX.current
+        touchX.current = null
+        if (images.length > 1 && Math.abs(dx) > 50) (dx < 0 ? next : prev)()
+      }}>
+      <div className="lightbox-top" onClick={e => e.stopPropagation()}>
+        <span className="lightbox-name" title={img.original_filename}>{img.original_filename}</span>
+        {images.length > 1 && <span className="lightbox-count">{index + 1} / {images.length}</span>}
+        <a className="icon-btn lightbox-btn" title="Download this photo"
+          href={`/api/files/${img.id}/download?dl=1`}>⬇️</a>
+        <button className="icon-btn lightbox-btn" title="Close" onClick={onClose}>✕</button>
+      </div>
+      {images.length > 1 && (
+        <button className="lightbox-arrow lightbox-prev" title="Previous photo"
+          onClick={e => { e.stopPropagation(); prev() }}>‹</button>
+      )}
+      <img className="lightbox-img" src={`/api/files/${img.id}/download`}
+        alt={img.original_filename} onClick={e => e.stopPropagation()} />
+      {images.length > 1 && (
+        <button className="lightbox-arrow lightbox-next" title="Next photo"
+          onClick={e => { e.stopPropagation(); next() }}>›</button>
+      )}
+    </div>,
+    document.body,
   )
 }
 
