@@ -3,7 +3,6 @@ import os
 import secrets
 
 from flask import Flask, jsonify, send_from_directory
-from flask_cors import CORS
 
 from .config import DATA_DIR, WEB_DIST
 from .db import db
@@ -43,7 +42,8 @@ def create_app():
     # login, they don't slide with activity
     app.config['SESSION_REFRESH_EACH_REQUEST'] = False
 
-    CORS(app, supports_credentials=True)
+    # No CORS on purpose: the frontend is served by this same server, so no
+    # other origin ever needs credentialed API access.
     db.init_app(app)
 
     from . import models  # noqa: F401  (register models)

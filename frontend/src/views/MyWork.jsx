@@ -1,11 +1,17 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { fmtDate, dueClass } from '../components/ui'
 
 export default function MyWork() {
   const { myWork, refreshMyWork, openBoard, openItem } = useStore()
+  const [groupBy, setGroupBy] = useState(() => localStorage.getItem('tm-mywork-group') || 'company')
 
   useEffect(() => { refreshMyWork() }, [])
+
+  function switchGroup(g) {
+    setGroupBy(g)
+    localStorage.setItem('tm-mywork-group', g)
+  }
 
   const sections = useMemo(() => {
     if (!myWork) return []
@@ -25,11 +31,35 @@ export default function MyWork() {
       }
     }).filter(i => i.board && !i.board.archived)
 
-    // one section per company; inside: dated jobs first (soonest on top,
-    // overdue naturally rise), then no-date, Done last
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const isDone = (i) => i.status?.label?.toLowerCase() === 'done'
     const isOverdue = (i) => !isDone(i) && i.due && new Date(i.due + 'T00:00:00') < today
+
+    if (groupBy === 'due') {
+      const week = new Date(today); week.setDate(week.getDate() + 7)
+      const buckets = { overdue: [], today: [], week: [], later: [], nodate: [], done: [] }
+      for (const i of items) {
+        if (isDone(i)) { buckets.done.push(i); continue }
+        if (!i.due) { buckets.nodate.push(i); continue }
+        const d = new Date(i.due + 'T00:00:00')
+        if (d < today) buckets.overdue.push(i)
+        else if (d.getTime() === today.getTime()) buckets.today.push(i)
+        else if (d <= week) buckets.week.push(i)
+        else buckets.later.push(i)
+      }
+      for (const k of Object.keys(buckets)) buckets[k].sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : 1)
+      return [
+        { key: 'overdue', title: '🔴 Overdue', items: buckets.overdue },
+        { key: 'today', title: '⭐ Today', items: buckets.today },
+        { key: 'week', title: '📆 This week', items: buckets.week },
+        { key: 'later', title: '⏳ Later', items: buckets.later },
+        { key: 'nodate', title: '🗓 No due date', items: buckets.nodate },
+        { key: 'done', title: '✅ Done', items: buckets.done },
+      ].filter(s => s.items.length > 0)
+    }
+
+    // by company: dated jobs first (soonest on top, overdue naturally rise),
+    // then no-date, Done last; companies with overdue work float up
     const rank = (i) => isDone(i) ? 2 : i.due ? 0 : 1
     const byCompany = new Map()
     for (const i of items) {
@@ -41,10 +71,10 @@ export default function MyWork() {
       .map(([company, list]) => {
         list.sort((a, b) => rank(a) - rank(b)
           || ((a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : 0))
-        return { company, items: list, overdue: list.filter(isOverdue).length }
+        return { key: company, title: `🏛️ ${company}`, items: list, overdue: list.filter(isOverdue).length }
       })
-      .sort((a, b) => b.overdue - a.overdue || a.company.localeCompare(b.company))
-  }, [myWork])
+      .sort((a, b) => b.overdue - a.overdue || a.key.localeCompare(b.key))
+  }, [myWork, groupBy])
 
   if (!myWork) return <div className="muted my-work-loading">Loading…</div>
 
@@ -52,12 +82,21 @@ export default function MyWork() {
     <div className="my-work">
       <h2>My Work</h2>
       <p className="muted">Every job and task where <strong>you</strong> are in the People list — across all companies and boards.</p>
+      <div className="mw-groupby">
+        <span className="muted">Group by:</span>
+        <button className={`status-filter-chip ${groupBy === 'company' ? 'active' : ''}`}
+          style={{ '--chip-color': 'var(--primary)' }}
+          onClick={() => switchGroup('company')}>🏛️ Company</button>
+        <button className={`status-filter-chip ${groupBy === 'due' ? 'active' : ''}`}
+          style={{ '--chip-color': 'var(--primary)' }}
+          onClick={() => switchGroup('due')}>📅 Due date</button>
+      </div>
       {sections.length === 0 && (
         <div className="my-work-empty">🎉 Nothing on your plate — you'll see any job or task here as soon as someone puts you in its People column.</div>
       )}
       {sections.map(s => (
-        <section key={s.company} className="my-work-section">
-          <h3>🏛️ {s.company} <span className="muted">({s.items.length})</span>
+        <section key={s.key} className="my-work-section">
+          <h3>{s.title} <span className="muted">({s.items.length})</span>
             {s.overdue > 0 && <span className="mw-overdue-badge">🔴 {s.overdue} overdue</span>}</h3>
           {s.items.map(i => (
             <button key={i.id} className="my-work-row"

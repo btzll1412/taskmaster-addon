@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import { api } from '../api'
 import { useStore } from '../store'
 
@@ -720,6 +721,7 @@ function RolesSection({ user, workspace, showToast }) {
 
 function TwoFactorSection({ user, init, showToast }) {
   const [setup, setSetup] = useState(null)
+  const [qr, setQr] = useState(null)
   const [code, setCode] = useState('')
   const [pw, setPw] = useState('')
   if (user.auth_source === 'ldap') return null
@@ -741,12 +743,19 @@ function TwoFactorSection({ user, init, showToast }) {
         <>
           <p className="muted">Add a 6-digit code step at login, using any authenticator app (Google Authenticator, Authy, 1Password…).</p>
           <div><button className="btn btn-primary" onClick={async () => {
-            try { setSetup(await api.post('/api/auth/totp/setup')) } catch (e) { showToast(e.message) }
+            try {
+              const s = await api.post('/api/auth/totp/setup')
+              setSetup(s)
+              setQr(null)
+              if (s.uri) QRCode.toDataURL(s.uri, { width: 220, margin: 1 }).then(setQr).catch(() => {})
+            } catch (e) { showToast(e.message) }
           }}>Set up 2FA</button></div>
         </>
       ) : (
         <>
-          <p className="muted">1. In your authenticator app, add an account with this secret key:</p>
+          <p className="muted">1. Scan this QR code with your authenticator app:</p>
+          {qr && <p><img className="totp-qr" src={qr} alt="Scan to add TaskMaster to your authenticator" /></p>}
+          <p className="muted">…or, if you can't scan, type in this secret key instead:</p>
           <p><code className="totp-secret">{setup.secret}</code></p>
           <p className="muted">2. Enter the 6-digit code it shows to confirm:</p>
           <div className="form-row">

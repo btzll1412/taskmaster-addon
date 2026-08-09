@@ -214,6 +214,7 @@ button, .cell, .menu-item, .label-option, .people-option, .board-card,
 .mw-board { color: var(--text-muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mw-company { color: var(--text-muted); font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mw-overdue-badge { margin-left: 10px; font-size: 12px; font-weight: 600; color: var(--danger); }
+.mw-groupby { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .mw-name { flex: 1; font-weight: 500; }
 .mw-date { font-size: 13px; color: var(--text-muted); }
 .mw-date.overdue { color: var(--danger); font-weight: 600; }
@@ -769,3 +770,4 @@ body.resizing-col { cursor: col-resize; user-select: none; }
 .update-body a { color: var(--primary); text-decoration: underline; }
 .mention-chip { color: var(--primary); font-weight: 600; }
 .totp-secret { font-size: 18px; letter-spacing: 2px; background: var(--surface-2); padding: 6px 12px; border-radius: 8px; }
+.totp-qr { width: 200px; height: 200px; background: #fff; padding: 8px; border-radius: 10px; border: 1px solid var(--border-light); }
