@@ -152,9 +152,10 @@ def serialize_board_full(board, visible_ids=None, access='full'):
     }
 
 
-def purge_item_rows(item_ids):
+def purge_item_rows(item_ids, keep_files=False):
     """Hard-delete everything hanging off a set of items: values, updates,
-    files (incl. on disk), per-item work activity, and single-job grants.
+    files (incl. on disk unless keep_files — a trash snapshot still needs the
+    blobs), per-item work activity, and single-job grants.
     SQLite reuses row ids, so leftovers would attach to future items."""
     if not item_ids:
         return
@@ -162,17 +163,18 @@ def purge_item_rows(item_ids):
     ItemValue.query.filter(ItemValue.item_id.in_(item_ids)).delete(synchronize_session=False)
     ItemUpdate.query.filter(ItemUpdate.item_id.in_(item_ids)).delete(synchronize_session=False)
     for f in FileAsset.query.filter(FileAsset.item_id.in_(item_ids)).all():
-        try:
-            os.remove(os.path.join(UPLOAD_DIR, f.filename))
-        except OSError:
-            pass
+        if not keep_files:
+            try:
+                os.remove(os.path.join(UPLOAD_DIR, f.filename))
+            except OSError:
+                pass
         db.session.delete(f)
     Activity.query.filter(Activity.item_id.in_(item_ids)).delete(synchronize_session=False)
     AccessGrant.query.filter(AccessGrant.scope_type == 'item',
                              AccessGrant.scope_id.in_(item_ids)).delete(synchronize_session=False)
 
 
-def purge_items(items):
+def purge_items(items, keep_files=False):
     """Delete items plus their sub-tasks and every dependent row."""
     all_items = list(items)
     ids = [i.id for i in all_items]
@@ -181,16 +183,16 @@ def purge_items(items):
                                  Item.id.notin_(ids)).all()
         all_items += subs
         ids = [i.id for i in all_items]
-    purge_item_rows(ids)
+    purge_item_rows(ids, keep_files=keep_files)
     for i in all_items:
         db.session.delete(i)
 
 
-def purge_board(board):
+def purge_board(board, keep_files=False):
     """Delete a board and every dependent row. Audit entries about the board
     (deletions, access changes) survive detached from it; work history goes."""
     from .models import AUDIT_ACTION_LIST
-    purge_items(Item.query.filter_by(board_id=board.id).all())
+    purge_items(Item.query.filter_by(board_id=board.id).all(), keep_files=keep_files)
     NotificationRule.query.filter_by(board_id=board.id).delete(synchronize_session=False)
     BoardColumn.query.filter_by(board_id=board.id).delete(synchronize_session=False)
     BoardGroup.query.filter_by(board_id=board.id).delete(synchronize_session=False)
@@ -367,3 +369,210 @@ def people_column_user_ids(item_id):
         if col and col.type == 'people':
             ids.update(v.value_dict().get('user_ids') or [])
     return ids
+
+
+# ---- Snapshots: power both the trash bin (delete → restore) and duplication ----
+
+def _snapshot_one_item(i):
+    return {
+        'name': i.name,
+        'position': i.position,
+        'created_by': i.created_by,
+        'created_at': i.created_at.isoformat() if i.created_at else None,
+        'checklist': i.checklist,
+        'values': [{'column_id': v.column_id, 'value': v.value}
+                   for v in ItemValue.query.filter_by(item_id=i.id).all()],
+        'updates': [{'user_id': u.user_id, 'body': u.body,
+                     'created_at': u.created_at.isoformat() if u.created_at else None}
+                    for u in ItemUpdate.query.filter_by(item_id=i.id)
+                    .order_by(ItemUpdate.created_at).all()],
+        'files': [{'filename': f.filename, 'original_filename': f.original_filename,
+                   'mime_type': f.mime_type, 'file_size': f.file_size, 'user_id': f.user_id}
+                  for f in FileAsset.query.filter_by(item_id=i.id).all()],
+    }
+
+
+def snapshot_item(item):
+    """Full JSON-able copy of a job: values, sub-tasks, updates, file metadata."""
+    snap = _snapshot_one_item(item)
+    snap['board_id'] = item.board_id
+    snap['group_id'] = item.group_id
+    snap['subitems'] = [_snapshot_one_item(s) for s in
+                        Item.query.filter_by(parent_id=item.id).order_by(Item.position).all()]
+    return snap
+
+
+def snapshot_board(board):
+    """Full JSON-able copy of a board: groups, columns, and all jobs."""
+    return {
+        'board': {'name': board.name, 'description': board.description,
+                  'icon': board.icon, 'color': board.color, 'status': board.status,
+                  'department_id': board.department_id, 'company_id': board.company_id,
+                  'owner_id': board.owner_id},
+        'groups': [{'old_id': g.id, 'name': g.name, 'color': g.color,
+                    'position': g.position, 'collapsed': g.collapsed}
+                   for g in BoardGroup.query.filter_by(board_id=board.id)
+                   .order_by(BoardGroup.position).all()],
+        'columns': [{'old_id': c.id, 'title': c.title, 'type': c.type,
+                     'settings': c.settings, 'position': c.position, 'width': c.width}
+                    for c in BoardColumn.query.filter_by(board_id=board.id)
+                    .order_by(BoardColumn.position).all()],
+        'items': [snapshot_item(i) for i in
+                  Item.query.filter(Item.board_id == board.id, Item.parent_id.is_(None))
+                  .order_by(Item.position).all()],
+    }
+
+
+def _restore_one_item(d, board_id, group_id, parent_id, column_map,
+                      include_discussion, name=None, position=None):
+    from datetime import datetime as _dt
+    from .config import UPLOAD_DIR
+    it = Item(board_id=board_id, group_id=group_id, parent_id=parent_id,
+              name=(name or d['name'])[:500],
+              position=position if position is not None else (d.get('position') or 0),
+              created_by=d.get('created_by'), checklist=d.get('checklist'))
+    db.session.add(it)
+    db.session.flush()
+    valid_cols = {c.id for c in BoardColumn.query.filter_by(board_id=board_id).all()}
+    for v in d.get('values', []):
+        cid = column_map.get(v['column_id']) if column_map else v['column_id']
+        if cid in valid_cols:
+            db.session.add(ItemValue(item_id=it.id, column_id=cid, value=v['value']))
+    if include_discussion:
+        for u in d.get('updates', []):
+            up = ItemUpdate(item_id=it.id, user_id=u.get('user_id'), body=u['body'])
+            if u.get('created_at'):
+                try:
+                    up.created_at = _dt.fromisoformat(u['created_at'])
+                except ValueError:
+                    pass
+            db.session.add(up)
+        for f in d.get('files', []):
+            # reattach only blobs that still exist on disk
+            if f.get('filename') and os.path.exists(os.path.join(UPLOAD_DIR, f['filename'])):
+                db.session.add(FileAsset(
+                    item_id=it.id, user_id=f.get('user_id'), filename=f['filename'],
+                    original_filename=f.get('original_filename') or f['filename'],
+                    mime_type=f.get('mime_type'), file_size=f.get('file_size')))
+    return it
+
+
+def restore_item_snapshot(snap, board, group, column_map=None,
+                          include_discussion=True, name=None, position=None):
+    """Recreate a job (with sub-tasks) from a snapshot on the given board/group."""
+    it = _restore_one_item(snap, board.id, group.id, None, column_map,
+                           include_discussion, name=name, position=position)
+    for sub in snap.get('subitems', []):
+        _restore_one_item(sub, board.id, group.id, it.id, column_map, include_discussion)
+    return it
+
+
+def restore_board_snapshot(snap, name=None, department_id=None, company_id=None,
+                           include_discussion=True):
+    """Recreate a whole board from a snapshot; ids are freshly assigned."""
+    b = snap['board']
+    max_pos = db.session.query(db.func.max(Board.position)).scalar() or 0
+    board = Board(name=(name or b['name'])[:200], description=b.get('description') or '',
+                  icon=b.get('icon') or '📋', color=b.get('color') or '#579bfc',
+                  status=b.get('status'), department_id=department_id,
+                  company_id=company_id, owner_id=b.get('owner_id'),
+                  position=max_pos + 1)
+    db.session.add(board)
+    db.session.flush()
+    group_map, column_map = {}, {}
+    for g in snap.get('groups', []):
+        ng = BoardGroup(board_id=board.id, name=g['name'], color=g.get('color') or '#579bfc',
+                        position=g.get('position') or 0, collapsed=bool(g.get('collapsed')))
+        db.session.add(ng)
+        db.session.flush()
+        group_map[g.get('old_id')] = ng
+    for c in snap.get('columns', []):
+        nc = BoardColumn(board_id=board.id, title=c['title'], type=c['type'],
+                         settings=c.get('settings') or '{}',
+                         position=c.get('position') or 0,
+                         width=c.get('width') or COLUMN_DEFAULT_WIDTH)
+        db.session.add(nc)
+        db.session.flush()
+        column_map[c.get('old_id')] = nc.id
+    if not group_map:
+        fallback = BoardGroup(board_id=board.id, name='Jobs', color=GROUP_COLORS[0], position=1)
+        db.session.add(fallback)
+        db.session.flush()
+    default_group = next(iter(group_map.values())) if group_map else fallback
+    for item_snap in snap.get('items', []):
+        group = group_map.get(item_snap.get('group_id'), default_group)
+        restore_item_snapshot(item_snap, board, group, column_map=column_map,
+                              include_discussion=include_discussion)
+    return board
+
+
+# ---- Trash bin: soft delete with a 30-day restore window ----
+
+TRASH_KEEP_DAYS = 30
+
+
+def trash_item(user_id, item):
+    """Snapshot a job into the trash, then hard-delete it (keeping file blobs)."""
+    from .models import TrashEntry
+    from . import permissions as perm
+    board = db.session.get(Board, item.board_id)
+    entry = TrashEntry(
+        kind='item', title=item.name[:500],
+        context=f'{board.icon} {board.name}' if board else '',
+        company_id=perm.board_company_id(board) if board else None,
+        payload=json.dumps(snapshot_item(item)), deleted_by=user_id)
+    db.session.add(entry)
+    purge_items([item], keep_files=True)
+    return entry
+
+
+def trash_board(user_id, board):
+    """Snapshot a whole board into the trash, then hard-delete it."""
+    from .models import TrashEntry
+    from . import permissions as perm
+    from .models import Department
+    dept = db.session.get(Department, board.department_id) if board.department_id else None
+    entry = TrashEntry(
+        kind='board', title=board.name[:500],
+        context=f'department {dept.name}' if dept else 'company page',
+        company_id=perm.board_company_id(board),
+        payload=json.dumps(snapshot_board(board)), deleted_by=user_id)
+    db.session.add(entry)
+    purge_board(board, keep_files=True)
+    return entry
+
+
+def _trash_entry_filenames(entry):
+    p = entry.payload_dict()
+    item_snaps = []
+    if entry.kind == 'item':
+        item_snaps = [p] + p.get('subitems', [])
+    else:
+        for i in p.get('items', []):
+            item_snaps += [i] + i.get('subitems', [])
+    return [f['filename'] for i in item_snaps for f in i.get('files', []) if f.get('filename')]
+
+
+def purge_trash_entry(entry):
+    """Remove a trash entry for good, deleting file blobs no live row references."""
+    from .config import UPLOAD_DIR
+    for name in _trash_entry_filenames(entry):
+        if not FileAsset.query.filter_by(filename=name).first():
+            try:
+                os.remove(os.path.join(UPLOAD_DIR, name))
+            except OSError:
+                pass
+    db.session.delete(entry)
+
+
+def purge_old_trash():
+    """Called daily: entries older than TRASH_KEEP_DAYS are gone for good."""
+    from datetime import datetime, timedelta
+    from .models import TrashEntry
+    cutoff = datetime.utcnow() - timedelta(days=TRASH_KEEP_DAYS)
+    old = TrashEntry.query.filter(TrashEntry.deleted_at < cutoff).all()
+    for e in old:
+        purge_trash_entry(e)
+    if old:
+        db.session.commit()
+    return len(old)

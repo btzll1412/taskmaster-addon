@@ -147,6 +147,8 @@ class Item(db.Model):
     name = db.Column(db.String(500), nullable=False)
     position = db.Column(db.Float, default=0)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    # lightweight checklist: JSON [{"id", "text", "done"}]
+    checklist = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utcnow)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
@@ -154,6 +156,12 @@ class Item(db.Model):
         db.Index('idx_items_board', 'board_id'),
         db.Index('idx_items_group', 'group_id'),
     )
+
+    def checklist_list(self):
+        try:
+            return json.loads(self.checklist) if self.checklist else []
+        except ValueError:
+            return []
 
     def to_dict(self, values=None, counts=None):
         d = {
@@ -164,6 +172,7 @@ class Item(db.Model):
             'name': self.name,
             'position': self.position,
             'created_by': self.created_by,
+            'checklist': self.checklist_list(),
             'created_at': iso(self.created_at),
             'updated_at': iso(self.updated_at),
         }
@@ -597,6 +606,38 @@ class AppSetting(db.Model):
 
 # Actions that form the permanent audit trail — they must survive the deletion
 # of the objects they describe.
+class TrashEntry(db.Model):
+    """A deleted job or board, kept restorable for 30 days. The payload is a
+    full JSON snapshot; the original rows are hard-deleted as before, but
+    uploaded file blobs stay on disk until the entry itself is purged."""
+    __tablename__ = 'trash_entries'
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(10), nullable=False)  # 'item' | 'board'
+    title = db.Column(db.String(500), nullable=False)
+    context = db.Column(db.String(500), default='')  # where it lived, for display
+    company_id = db.Column(db.Integer)               # scoping for company admins
+    payload = db.Column(db.Text, nullable=False)
+    deleted_by = db.Column(db.Integer)
+    deleted_at = db.Column(db.DateTime, default=utcnow)
+
+    def payload_dict(self):
+        try:
+            return json.loads(self.payload)
+        except ValueError:
+            return {}
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'kind': self.kind,
+            'title': self.title,
+            'context': self.context or '',
+            'company_id': self.company_id,
+            'deleted_by': self.deleted_by,
+            'deleted_at': iso(self.deleted_at),
+        }
+
+
 AUDIT_ACTION_LIST = ('board_deleted', 'item_deleted', 'group_deleted', 'column_deleted',
                      'company_deleted', 'department_deleted', 'role_deleted',
                      'user_created', 'user_deactivated', 'user_activated', 'user_role_changed',

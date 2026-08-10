@@ -131,6 +131,13 @@ def run_daily_once():
         run_backup()
     except Exception as e:  # noqa: BLE001
         print(f'TaskMaster backup: {e}')
+    try:
+        from .services import purge_old_trash
+        n = purge_old_trash()
+        if n:
+            print(f'TaskMaster trash: purged {n} entries older than 30 days')
+    except Exception as e:  # noqa: BLE001
+        print(f'TaskMaster trash purge: {e}')
 
 
 def run_due_reminders():

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { api } from '../api'
 import { useStore } from '../store'
+import { timeAgo } from '../components/ui'
 
 const LEVEL_LABEL = {
   super_admin: 'Super admin', admin: 'Admin (IT staff)',
@@ -28,6 +29,9 @@ export default function Settings() {
           </button>
           <button className={tab === 'roles' ? 'active' : ''} onClick={() => setTab('roles')}>
             <span className="tab-icon">🎭</span> Roles
+          </button>
+          <button className={tab === 'trash' ? 'active' : ''} onClick={() => setTab('trash')}>
+            <span className="tab-icon">🗑️</span> Trash
           </button>
           {user.role === 'super_admin' && (
             <button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
@@ -63,11 +67,58 @@ export default function Settings() {
       )}
       {tab === 'automations' && isAdmin && <AutomationsSection user={user} showToast={showToast} />}
       {tab === 'roles' && canRoles && <RolesSection user={user} workspace={workspace} showToast={showToast} />}
+      {tab === 'trash' && canRoles && <TrashSection showToast={showToast} />}
       {tab === 'login' && user.role === 'super_admin' && <LoginScreenSection showToast={showToast} />}
       {tab === 'email' && user.role === 'super_admin' && <EmailSection user={user} showToast={showToast} />}
       {tab === 'backups' && user.role === 'super_admin' && <BackupsSection showToast={showToast} />}
       {tab === 'directory' && user.role === 'super_admin' && <DirectorySection workspace={workspace} showToast={showToast} />}
     </div>
+  )
+}
+
+function TrashSection({ showToast }) {
+  const { refreshBoards } = useStore()
+  const [entries, setEntries] = useState(null)
+  const load = () => api.get('/api/trash')
+    .then(d => setEntries(d.entries))
+    .catch(e => { showToast(e.message); setEntries([]) })
+  useEffect(() => { load() }, [])
+
+  async function restore(entry) {
+    try {
+      await api.post(`/api/trash/${entry.id}/restore`)
+      showToast(`♻️ "${entry.title}" restored`)
+      await refreshBoards()
+      await load()
+    } catch (e) { showToast(e.message) }
+  }
+  async function purge(entry) {
+    if (!confirm(`Permanently delete "${entry.title}"? This cannot be undone.`)) return
+    try { await api.del(`/api/trash/${entry.id}`); await load() }
+    catch (e) { showToast(e.message) }
+  }
+
+  return (
+    <section className="settings-card">
+      <h3>🗑️ Trash</h3>
+      <p className="muted">Deleted jobs and boards stay here for <strong>30 days</strong> and
+        can be put back exactly where they were — sub-tasks, updates and files included.</p>
+      {entries === null && <div className="muted">Loading…</div>}
+      {entries && entries.length === 0 && <div className="muted">The trash is empty.</div>}
+      {entries && entries.map(e => (
+        <div key={e.id} className="trash-row">
+          <span className="trash-kind">{e.kind === 'board' ? '📋' : '🧾'}</span>
+          <span className="trash-title">
+            {e.title}
+            <span className="muted trash-context">
+              {e.kind === 'board' ? 'board' : 'job'}{e.context ? ` · ${e.context}` : ''} · deleted {timeAgo(e.deleted_at)}
+            </span>
+          </span>
+          <button className="btn btn-small btn-secondary" onClick={() => restore(e)}>♻️ Restore</button>
+          <button className="btn btn-small btn-danger" onClick={() => purge(e)}>Delete forever</button>
+        </div>
+      ))}
+    </section>
   )
 }
 

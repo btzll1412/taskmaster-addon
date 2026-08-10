@@ -51,6 +51,7 @@ def ensure_schema():
         _ensure_column('boards', 'department_id', 'department_id INTEGER')
     if 'items' in tables:
         _ensure_column('items', 'parent_id', 'parent_id INTEGER')
+        _ensure_column('items', 'checklist', 'checklist TEXT')
     if 'boards' in tables:
         _ensure_column('boards', 'company_id', 'company_id INTEGER')
         _ensure_column('boards', 'status', 'status TEXT')
