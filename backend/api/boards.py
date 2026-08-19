@@ -162,14 +162,38 @@ def delete_board(user, board_id):
     name = board.name
     dept = db.session.get(Department, board.department_id) if board.department_id else None
     where = f' ({dept.name})' if dept else ''
-    from ..services import purge_board
-    purge_board(board)
+    from ..services import trash_board
+    trash_board(user.id, board)
     log_activity(user.id, None, None, 'board_deleted',
-                 f'deleted board "{name}"{where}', company_id=company_id)
+                 f'deleted board "{name}"{where} (30 days in trash)', company_id=company_id)
     db.session.commit()
     broadcast_board(board_id, kind='board_deleted')
     ha.fire_event('taskmaster_board_deleted', {'board_id': board_id, 'name': name})
     return jsonify({'ok': True})
+
+
+@bp.post('/boards/<int:board_id>/duplicate')
+@login_required
+def duplicate_board(user, board_id):
+    """Copy a board's structure and jobs (not updates/files) as '<name> (copy)'."""
+    board, access = _board_or_403(user, board_id)
+    if not access or access != 'full':
+        return jsonify({'error': 'You do not have access to this board'}), 403
+    if not perm.can_create_board_in(user, perm.board_company_id(board), board.department_id):
+        return jsonify({'error': 'No permission to create boards here'}), 403
+    from ..services import restore_board_snapshot, snapshot_board
+    snap = snapshot_board(board)
+    new = restore_board_snapshot(snap, name=f'{board.name} (copy)',
+                                 department_id=board.department_id,
+                                 company_id=board.company_id,
+                                 include_discussion=False)
+    new.owner_id = user.id
+    new.status = None  # the copy starts fresh, not already marked Done
+    log_activity(user.id, new.id, None, 'board_created',
+                 f'duplicated board "{board.name}"')
+    db.session.commit()
+    broadcast_board(new.id)
+    return jsonify({'board': new.to_dict()}), 201
 
 
 @bp.get('/boards/<int:board_id>/items')
@@ -255,9 +279,13 @@ def delete_group(user, group_id):
     board_id = group.board_id
     if BoardGroup.query.filter_by(board_id=board_id).count() <= 1:
         return jsonify({'error': 'A board must keep at least one group'}), 400
-    from ..services import purge_items
+    from ..services import purge_items, trash_item
+    for it in Item.query.filter_by(group_id=group.id, parent_id=None).all():
+        trash_item(user.id, it)
+    # stray sub-tasks whose parent lived in another group
     purge_items(Item.query.filter_by(group_id=group.id).all())
-    log_activity(user.id, board_id, None, 'group_deleted', f'deleted group "{group.name}"')
+    log_activity(user.id, board_id, None, 'group_deleted',
+                 f'deleted group "{group.name}" (its jobs are in the trash for 30 days)')
     db.session.delete(group)
     db.session.commit()
     broadcast_board(board_id)

@@ -898,3 +898,98 @@ def delete_template(user, template_id):
     db.session.delete(t)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ---- Trash bin (deleted jobs & boards, restorable for 30 days) ----
+
+def _trash_scope(user):
+    """None = all entries (super admin); a set of company ids otherwise."""
+    if perm.is_super(user):
+        return None
+    if user.role == 'admin':
+        return perm.managed_company_ids(user)
+    if user.role == 'company_admin' and user.company_id:
+        return {user.company_id}
+    return set()
+
+
+@bp.get('/trash')
+@login_required
+def list_trash(user):
+    from ..models import TrashEntry
+    scope = _trash_scope(user)
+    if scope is not None and not scope:
+        return jsonify({'error': 'Only admins can see the trash'}), 403
+    q = TrashEntry.query.order_by(TrashEntry.deleted_at.desc())
+    if scope is not None:
+        q = q.filter(TrashEntry.company_id.in_(scope))
+    return jsonify({'entries': [e.to_dict() for e in q.limit(200).all()]})
+
+
+def _trash_entry_or_403(user, entry_id):
+    from ..models import TrashEntry
+    entry = TrashEntry.query.get_or_404(entry_id)
+    scope = _trash_scope(user)
+    if scope is not None and entry.company_id not in scope:
+        return None
+    return entry
+
+
+@bp.post('/trash/<int:entry_id>/restore')
+@login_required
+def restore_trash(user, entry_id):
+    from ..models import BoardGroup, TrashEntry  # noqa: F401
+    from ..services import (broadcast_board, restore_board_snapshot,
+                            restore_item_snapshot)
+    entry = _trash_entry_or_403(user, entry_id)
+    if entry is None:
+        return jsonify({'error': 'No permission for this trash entry'}), 403
+    snap = entry.payload_dict()
+    if entry.kind == 'item':
+        board = db.session.get(Board, snap.get('board_id'))
+        if board is None:
+            return jsonify({'error': 'The board this job lived on no longer '
+                                     'exists — restore the board first'}), 400
+        group = db.session.get(BoardGroup, snap.get('group_id'))
+        if group is None or group.board_id != board.id:
+            group = (BoardGroup.query.filter_by(board_id=board.id)
+                     .order_by(BoardGroup.position).first())
+        if group is None:
+            return jsonify({'error': 'The board has no groups to restore into'}), 400
+        it = restore_item_snapshot(snap, board, group)
+        log_activity(user.id, board.id, it.id, 'item_created',
+                     f'restored "{it.name}" from the trash')
+        db.session.delete(entry)  # blobs are re-attached, keep them
+        db.session.commit()
+        broadcast_board(board.id)
+        return jsonify({'restored': 'item', 'board_id': board.id, 'item_id': it.id})
+
+    b = snap.get('board', {})
+    dept = db.session.get(Department, b.get('department_id')) if b.get('department_id') else None
+    company_id = b.get('company_id')
+    if dept is None and company_id is None:
+        company_id = entry.company_id
+    if dept is None and (company_id is None or db.session.get(Company, company_id) is None):
+        return jsonify({'error': 'The company/department this board belonged '
+                                 'to no longer exists'}), 400
+    board = restore_board_snapshot(snap, department_id=dept.id if dept else None,
+                                   company_id=None if dept else company_id)
+    log_activity(user.id, board.id, None, 'board_created',
+                 f'restored board "{board.name}" from the trash',
+                 company_id=entry.company_id)
+    db.session.delete(entry)
+    db.session.commit()
+    broadcast_board(board.id)
+    return jsonify({'restored': 'board', 'board_id': board.id})
+
+
+@bp.delete('/trash/<int:entry_id>')
+@login_required
+def purge_trash(user, entry_id):
+    from ..services import purge_trash_entry
+    entry = _trash_entry_or_403(user, entry_id)
+    if entry is None:
+        return jsonify({'error': 'No permission for this trash entry'}), 403
+    purge_trash_entry(entry)
+    db.session.commit()
+    return jsonify({'ok': True})

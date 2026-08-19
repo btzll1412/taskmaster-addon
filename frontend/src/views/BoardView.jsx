@@ -158,11 +158,22 @@ export default function BoardView() {
                   onClick={() => { setMenu(false); act(api.put(`/api/boards/${board.id}`, { archived: !board.archived })) }}>
                   {board.archived ? '📤 Unarchive board' : '🗃️ Archive board'}
                 </button>
+                <button className="menu-item"
+                  onClick={async () => {
+                    setMenu(false)
+                    try {
+                      const r = await api.post(`/api/boards/${board.id}/duplicate`)
+                      await refreshBoards()
+                      navigate({ page: 'board', boardId: r.board.id })
+                    } catch (e) { showToast(e.message) }
+                  }}>
+                  📋 Duplicate board
+                </button>
                 <hr className="menu-sep" />
                 <button className="menu-item menu-danger"
                   onClick={async () => {
                     setMenu(false)
-                    if (!confirm(`Permanently delete "${board.name}" and everything on it?`)) return
+                    if (!confirm(`Delete "${board.name}" and everything on it? It stays in the trash for 30 days.`)) return
                     try {
                       await api.del(`/api/boards/${board.id}`)
                       await refreshBoards()

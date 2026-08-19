@@ -142,13 +142,64 @@ def delete_item(user, item_id):
         return jsonify({'error': 'No permission to delete this item'}), 403
     board_id = item.board_id
     kind = 'sub-task' if item.parent_id else 'job'
-    purge_items([item])
+    from ..services import trash_item
+    trash_item(user.id, item)
     log_activity(user.id, board_id, None, 'item_deleted',
-                 f'deleted {kind} "{item.name}" from "{board.name}"',
+                 f'deleted {kind} "{item.name}" from "{board.name}" (30 days in trash)',
                  company_id=perm.board_company_id(board))
     db.session.commit()
     broadcast_board(board_id)
     return jsonify({'ok': True})
+
+
+@bp.post('/items/<int:item_id>/duplicate')
+@login_required
+def duplicate_item(user, item_id):
+    """Copy a job with its values and sub-tasks (not updates/files),
+    placed right below the original."""
+    item = Item.query.get_or_404(item_id)
+    board = db.session.get(Board, item.board_id)
+    if perm.board_access(user, board) != 'full':
+        return jsonify({'error': 'No access to this board'}), 403
+    if not perm.has_cap(user, perm.CAP_CREATE):
+        return jsonify({'error': 'Your role cannot create jobs'}), 403
+    if item.parent_id:
+        return jsonify({'error': 'Duplicate the parent job to copy sub-tasks'}), 400
+    from ..models import BoardGroup
+    from ..services import restore_item_snapshot, snapshot_item
+    group = db.session.get(BoardGroup, item.group_id)
+    snap = snapshot_item(item)
+    new = restore_item_snapshot(snap, board, group, include_discussion=False,
+                                name=f'{item.name} (copy)',
+                                position=item.position + 0.5)
+    new.created_by = user.id
+    log_activity(user.id, board.id, new.id, 'item_created',
+                 f'duplicated job "{item.name}"')
+    db.session.commit()
+    broadcast_board(board.id)
+    return jsonify({'item': new.to_dict()}), 201
+
+
+@bp.put('/items/<int:item_id>/checklist')
+@login_required
+def set_checklist(user, item_id):
+    """Replace the job's lightweight checklist: [{id?, text, done?}, ...]."""
+    item = Item.query.get_or_404(item_id)
+    if not perm.can_view_item(user, item):
+        return jsonify({'error': 'No access to this item'}), 403
+    if not perm.has_cap(user, perm.CAP_EDIT):
+        return jsonify({'error': 'Your role cannot edit jobs'}), 403
+    entries = (request.json or {}).get('items') or []
+    clean = []
+    for c in entries[:100]:
+        text = str(c.get('text') or '').strip()[:300]
+        if text:
+            clean.append({'id': c.get('id') or uuid.uuid4().hex[:8],
+                          'text': text, 'done': bool(c.get('done'))})
+    item.checklist = json.dumps(clean) if clean else None
+    db.session.commit()
+    broadcast_board(item.board_id)
+    return jsonify({'item': item.to_dict()})
 
 
 def _describe_value(col, value):

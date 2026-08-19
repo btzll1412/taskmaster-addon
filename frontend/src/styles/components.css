@@ -216,6 +216,46 @@ button, .cell, .menu-item, .label-option, .people-option, .board-card,
 .mw-overdue-badge { margin-left: 10px; font-size: 12px; font-weight: 600; color: var(--danger); }
 .mw-groupby { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 
+/* ---------- Bulk actions ---------- */
+.bulk-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--primary);
+  border-radius: 10px; padding: 8px 14px; margin-top: 12px;
+  position: sticky; top: 8px; z-index: 40; box-shadow: var(--shadow);
+}
+.bulk-count { font-weight: 700; margin-right: 4px; }
+.col-check { width: 34px; min-width: 34px; text-align: center; }
+.col-check input { width: 16px; height: 16px; cursor: pointer; }
+.item-row.row-selected td { background: color-mix(in srgb, var(--primary) 10%, var(--surface)); }
+
+/* ---------- Checklist ---------- */
+.panel-checklist { padding: 4px 20px 10px; border-bottom: 1px solid var(--border-light); }
+.checklist-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.checklist-head label { font-weight: 600; font-size: 14px; }
+.checklist-progress {
+  flex: 1; max-width: 180px; height: 6px; border-radius: 3px; background: var(--surface-2);
+  overflow: hidden;
+}
+.checklist-progress div { height: 100%; background: var(--success, #00c875); transition: width .2s; }
+.checklist-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.checklist-row input[type=checkbox] { width: 17px; height: 17px; cursor: pointer; flex-shrink: 0; }
+.checklist-text { flex: 1; font-size: 14px; }
+.checklist-row-done .checklist-text { text-decoration: line-through; color: var(--text-muted); }
+.checklist-del { opacity: .5; }
+.checklist-del:hover { opacity: 1; }
+.checklist-add input { width: 100%; margin-top: 4px; }
+.checklist-bubble { margin-left: 6px; }
+.checklist-complete { color: var(--success, #00c875); font-weight: 700; }
+
+/* ---------- Trash ---------- */
+.trash-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.trash-kind { font-size: 20px; }
+.trash-title { flex: 1; font-weight: 600; display: flex; flex-direction: column; min-width: 0; }
+.trash-context { font-weight: 400; font-size: 12px; }
+
 /* ---------- Photo gallery (lightbox) ---------- */
 .lightbox {
   position: fixed; inset: 0; z-index: 1200; background: rgba(8, 12, 28, .9);
@@ -550,7 +590,7 @@ button, .cell, .menu-item, .label-option, .people-option, .board-card,
 .sites-hint { font-size: 12px; margin: 0; }
 
 /* ---------- Overlay popover ---------- */
-.popover-overlay { position: fixed; box-shadow: var(--shadow-lg); }
+.popover-overlay { position: fixed; box-shadow: var(--shadow-lg); overflow-y: auto; }
 
 /* ---------- Companies nav + directory ---------- */
 .companies-nav { display: flex; align-items: center; cursor: pointer; }

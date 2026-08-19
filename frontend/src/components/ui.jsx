@@ -38,10 +38,17 @@ export function OverlayPopover({ anchorRef, onClose, children, width = 230 }) {
     left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
     const spaceBelow = window.innerHeight - r.bottom
     const st = { left, width, position: 'fixed', zIndex: 900 }
+    // never taller than the space it sits in — long menus scroll instead of
+    // running off the bottom of the screen
     if (spaceBelow < 340 && r.top > 340) {
       st.bottom = window.innerHeight - r.top + 4
+      st.maxHeight = r.top - 16
+      // the base .popover class sets a top — it must not apply in bottom mode,
+      // or the menu renders one full viewport below the screen
+      st.top = 'auto'
     } else {
       st.top = r.bottom + 4
+      st.maxHeight = window.innerHeight - r.bottom - 16
     }
     setStyle(st)
   }, [])

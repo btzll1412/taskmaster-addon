@@ -105,6 +105,8 @@ export default function ItemPanel({ itemId }) {
           </div>
         )}
 
+        <Checklist item={item} act={act} canEdit={canEditItems} />
+
         <div className="panel-tabs">
           <button className={tab === 'updates' ? 'active' : ''} onClick={() => setTab('updates')}>
             💬 Updates {updates.length > 0 && `(${updates.length})`}
@@ -223,6 +225,54 @@ export default function ItemPanel({ itemId }) {
           onIndex={setGallery} onClose={() => setGallery(null)} />
       )}
     </>
+  )
+}
+
+/** Lightweight tick-list inside a job — for small steps that don't deserve
+ * full sub-task rows. */
+function Checklist({ item, act, canEdit }) {
+  const [text, setText] = useState('')
+  const list = item.checklist || []
+  const save = (next) => act(api.put(`/api/items/${item.id}/checklist`, { items: next }))
+  if (list.length === 0 && !canEdit) return null
+  const done = list.filter(c => c.done).length
+  return (
+    <div className="panel-checklist">
+      <div className="checklist-head">
+        <label>☑ Checklist</label>
+        {list.length > 0 && (
+          <>
+            <span className="muted">{done}/{list.length}</span>
+            <div className="checklist-progress">
+              <div style={{ width: `${Math.round((done / list.length) * 100)}%` }} />
+            </div>
+          </>
+        )}
+      </div>
+      {list.map(c => (
+        <div key={c.id} className={`checklist-row ${c.done ? 'checklist-row-done' : ''}`}>
+          <input type="checkbox" checked={!!c.done} disabled={!canEdit}
+            onChange={() => save(list.map(x => x.id === c.id ? { ...x, done: !x.done } : x))} />
+          <span className="checklist-text">{c.text}</span>
+          {canEdit && (
+            <button className="icon-btn checklist-del" title="Remove"
+              onClick={() => save(list.filter(x => x.id !== c.id))}>✕</button>
+          )}
+        </div>
+      ))}
+      {canEdit && (
+        <form className="checklist-add" onSubmit={e => {
+          e.preventDefault()
+          const v = text.trim()
+          if (!v) return
+          setText('')
+          save([...list, { text: v }])
+        }}>
+          <input placeholder="＋ Add a checklist step" value={text}
+            onChange={e => setText(e.target.value)} />
+        </form>
+      )}
+    </div>
   )
 }
 

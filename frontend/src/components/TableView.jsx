@@ -24,6 +24,14 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, can
   const { board, groups, columns } = boardData
   const [widths, setWidths] = useState({})   // live drag-resize overrides
   const colWidth = (col) => widths[col.id] ?? col.width
+  // bulk selection of top-level jobs (across groups)
+  const [selected, setSelected] = useState(() => new Set())
+  const bulkEnabled = canEditItems
+  const toggleSelect = (id) => {
+    const next = new Set(selected)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setSelected(next)
+  }
 
   function startResize(col, e) {
     e.preventDefault()
@@ -59,6 +67,12 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, can
 
   return (
     <div className="table-view">
+      {bulkEnabled && selected.size > 0 && (
+        <BulkBar selected={selected} setSelected={setSelected} items={items}
+          columns={columns} groups={groups} boardData={boardData}
+          canCreate={canCreate} canEdit={canEdit}
+          refreshBoard={refreshBoard} showToast={showToast} />
+      )}
       {groups.map(group => (
         <GroupTable key={group.id} group={group} columns={columns} users={users}
           usersFor={usersFor} canCreate={canCreate} canEditItems={canEditItems}
@@ -66,7 +80,8 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, can
           groups={groups} board={board} canEdit={canEdit}
           act={act} setValue={setValue} updateColumnSettings={updateColumnSettings}
           openItem={openItem} colWidth={colWidth} startResize={startResize}
-          canReorder={canReorder} />
+          canReorder={canReorder}
+          bulkEnabled={bulkEnabled} selected={selected} toggleSelect={toggleSelect} />
       ))}
       {canEdit && (
         <button className="add-group-btn"
@@ -78,8 +93,91 @@ export default function TableView({ items, canEdit, canCreate, canEditItems, can
   )
 }
 
+/** Toolbar over the table when jobs are ticked: act on all of them at once. */
+function BulkBar({ selected, setSelected, items, columns, groups, boardData,
+  canCreate, canEdit, refreshBoard, showToast }) {
+  const [menu, setMenu] = useState(null)  // 'status' | 'assign' | 'group' | null
+  const anchor = useRef(null)
+  const statusCol = columns.find(c => c.type === 'status')
+  const labels = statusCol?.settings?.labels || []
+  const peopleCol = columns.find(c => c.type === 'people')
+  const assignable = boardData.assignable
+  const people = assignable
+    ? assignable.board_ids.map(id => assignable.users[String(id)]).filter(u => u && u.is_active)
+    : []
+  const ids = [...selected].filter(id => items.some(i => i.id === id))
+
+  async function bulk(fn, { needsConfirm } = {}) {
+    if (needsConfirm && !confirm(needsConfirm)) return
+    setMenu(null)
+    try {
+      for (const id of ids) await fn(id)
+    } catch (e) { showToast(e.message) }
+    setSelected(new Set())
+    await refreshBoard()
+  }
+
+  return (
+    <div className="bulk-bar" ref={anchor}>
+      <span className="bulk-count">{ids.length} selected</span>
+      {statusCol && labels.length > 0 && (
+        <button className="btn btn-small btn-secondary" onClick={() => setMenu('status')}>🟢 Set status</button>
+      )}
+      {peopleCol && people.length > 0 && (
+        <button className="btn btn-small btn-secondary" onClick={() => setMenu('assign')}>👥 Assign</button>
+      )}
+      {canEdit && groups.length > 1 && (
+        <button className="btn btn-small btn-secondary" onClick={() => setMenu('group')}>➡️ Move to group</button>
+      )}
+      {canCreate && (
+        <button className="btn btn-small btn-secondary"
+          onClick={() => bulk(id => api.post(`/api/items/${id}/duplicate`))}>📋 Duplicate</button>
+      )}
+      <button className="btn btn-small btn-danger"
+        onClick={() => bulk(id => api.del(`/api/items/${id}`),
+          { needsConfirm: `Delete ${ids.length} job${ids.length === 1 ? '' : 's'}? They stay in the trash for 30 days.` })}>
+        🗑️ Delete
+      </button>
+      <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
+      {menu === 'status' && (
+        <OverlayPopover anchorRef={anchor} onClose={() => setMenu(null)} width={200}>
+          {labels.map(l => (
+            <button key={l.id} className="label-option" style={{ background: l.color }}
+              onClick={() => bulk(id => api.put(`/api/items/${id}/values/${statusCol.id}`, { value: { id: l.id } }))}>
+              {l.label}
+            </button>
+          ))}
+        </OverlayPopover>
+      )}
+      {menu === 'assign' && (
+        <OverlayPopover anchorRef={anchor} onClose={() => setMenu(null)} width={230}>
+          <div className="people-list">
+            {people.map(u => (
+              <button key={u.id} className="people-option"
+                onClick={() => bulk(id => api.put(`/api/items/${id}/values/${peopleCol.id}`, { value: { user_ids: [u.id] } }))}>
+                <span>{u.display_name}</span>
+              </button>
+            ))}
+          </div>
+        </OverlayPopover>
+      )}
+      {menu === 'group' && (
+        <OverlayPopover anchorRef={anchor} onClose={() => setMenu(null)} width={210}>
+          {groups.map(g => (
+            <button key={g.id} className="menu-item"
+              onClick={() => bulk(id => api.put(`/api/items/${id}`, { group_id: g.id }))}>
+              ➡️ <span style={{ color: g.color, fontWeight: 600 }}>{g.name}</span>
+            </button>
+          ))}
+        </OverlayPopover>
+      )}
+    </div>
+  )
+}
+
 function GroupTable({ group, groups, columns, items, users, usersFor, board, canEdit,
-  canCreate, canEditItems, canReorder, act, setValue, updateColumnSettings, openItem, colWidth, startResize }) {
+  canCreate, canEditItems, canReorder, act, setValue, updateColumnSettings, openItem, colWidth, startResize,
+  bulkEnabled, selected, toggleSelect }) {
   const [newItem, setNewItem] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [expanded, setExpanded] = useState(() => new Set())
@@ -124,7 +222,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
     await act(api.post(`/api/boards/${board.id}/items`, { name, group_id: group.id }))
   }
 
-  const colSpan = columns.length + 2
+  const colSpan = columns.length + (bulkEnabled ? 3 : 2)
 
   return (
     <div className="group-table" style={{ '--group-color': group.color }}>
@@ -152,6 +250,15 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
           <table className="board-table">
             <thead>
               <tr>
+                {bulkEnabled && (
+                  <th className="col-check">
+                    <input type="checkbox" title="Select all in this group"
+                      checked={topItems.length > 0 && topItems.every(i => selected.has(i.id))}
+                      onChange={e => topItems.forEach(i => {
+                        if (e.target.checked !== selected.has(i.id)) toggleSelect(i.id)
+                      })} />
+                  </th>
+                )}
                 <th className="col-name">Item</th>
                 {columns.map(col => (
                   <ColumnHeader key={col.id} col={col} act={act} canEdit={canEdit}
@@ -164,8 +271,11 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
               {topItems.map(item => (
                 <React.Fragment key={item.id}>
                   <ItemRow item={item} columns={columns} users={usersFor ? usersFor(item) : users} groups={groups}
-                    canEdit={canEdit} canEditItems={canEditItems} act={act} setValue={setValue}
+                    canEdit={canEdit} canEditItems={canEditItems} canCreate={canCreate}
+                    act={act} setValue={setValue}
                     updateColumnSettings={updateColumnSettings} openItem={openItem} colWidth={colWidth}
+                    bulkEnabled={bulkEnabled} isSelected={selected.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
                     subCount={(subsByParent[item.id] || []).length}
                     isExpanded={expanded.has(item.id)}
                     onToggleExpand={() => toggleExpand(item.id)}
@@ -178,7 +288,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
                       {(subsByParent[item.id] || []).map(sub => (
                         <ItemRow key={sub.id} item={sub} columns={columns} users={usersFor ? usersFor(sub) : users}
                           groups={groups} canEdit={canEdit} canEditItems={canEditItems}
-                          act={act} setValue={setValue}
+                          act={act} setValue={setValue} bulkEnabled={bulkEnabled}
                           updateColumnSettings={updateColumnSettings} openItem={openItem}
                           colWidth={colWidth} isSub />
                       ))}
@@ -205,6 +315,7 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
               )}
               {topItems.length > 0 && (
                 <tr className="group-footer">
+                  {bulkEnabled && <td className="col-check" />}
                   <td className="col-name" />
                   {columns.map(col => (
                     <td key={col.id}>
@@ -223,15 +334,24 @@ function GroupTable({ group, groups, columns, items, users, usersFor, board, can
   )
 }
 
-function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, setValue,
+function ItemRow({ item, columns, users, groups, canEdit, canEditItems, canCreate, act, setValue,
   updateColumnSettings, openItem, colWidth, isSub, subCount = 0, isExpanded, onToggleExpand,
-  draggable, onDragStart, onDropRow, isDragging }) {
+  draggable, onDragStart, onDropRow, isDragging, bulkEnabled, isSelected, onToggleSelect }) {
+  const cl = item.checklist || []
+  const clDone = cl.filter(c => c.done).length
   return (
-    <tr className={`item-row ${isSub ? 'sub-item-row' : ''} ${isDragging ? 'row-dragging' : ''}`}
+    <tr className={`item-row ${isSub ? 'sub-item-row' : ''} ${isDragging ? 'row-dragging' : ''} ${isSelected ? 'row-selected' : ''}`}
       draggable={!!draggable}
       onDragStart={draggable ? onDragStart : undefined}
       onDragOver={draggable ? (e) => e.preventDefault() : undefined}
       onDrop={draggable ? (e) => { e.preventDefault(); onDropRow() } : undefined}>
+      {bulkEnabled && (
+        <td className="col-check">
+          {!isSub && (
+            <input type="checkbox" checked={!!isSelected} onChange={onToggleSelect} />
+          )}
+        </td>
+      )}
       <td className="col-name">
         <div className="item-name-cell">
           {isSub && <span className="sub-indent">↳</span>}
@@ -245,9 +365,14 @@ function ItemRow({ item, columns, users, groups, canEdit, canEditItems, act, set
           <span className="item-name" title="Open" onClick={() => openItem(item.id)}>
             {item.name}
             {item.updates_count > 0 && <span className="bubble"> 💬 {item.updates_count}</span>}
+            {cl.length > 0 && (
+              <span className={`bubble checklist-bubble ${clDone === cl.length ? 'checklist-complete' : ''}`}>
+                ☑ {clDone}/{cl.length}
+              </span>
+            )}
           </span>
           <ItemMenu item={item} groups={groups} act={act} canEdit={canEdit} isSub={isSub}
-            canEditItems={canEditItems} columns={columns} setValue={setValue} />
+            canEditItems={canEditItems} canCreate={canCreate} columns={columns} setValue={setValue} />
         </div>
       </td>
       {columns.map(col => (
@@ -279,7 +404,7 @@ function AddSubItem({ board, parent, act }) {
   )
 }
 
-function ItemMenu({ item, groups, act, canEdit, isSub, canEditItems, columns, setValue }) {
+function ItemMenu({ item, groups, act, canEdit, isSub, canEditItems, canCreate, columns, setValue }) {
   const [open, setOpen] = useState(false)
   const anchor = useRef(null)
   const others = canEdit && !isSub ? groups.filter(g => g.id !== item.group_id) : []
@@ -317,8 +442,14 @@ function ItemMenu({ item, groups, act, canEdit, isSub, canEditItems, columns, se
             </button>
           ))}
           {others.length > 0 && <hr className="menu-sep" />}
+          {canCreate && !isSub && (
+            <button className="menu-item"
+              onClick={() => { setOpen(false); act(api.post(`/api/items/${item.id}/duplicate`)) }}>
+              📋 Duplicate job
+            </button>
+          )}
           <button className="menu-item menu-danger"
-            onClick={() => { setOpen(false); if (confirm(`Delete "${item.name}"?`)) act(api.del(`/api/items/${item.id}`)) }}>
+            onClick={() => { setOpen(false); if (confirm(`Delete "${item.name}"? It stays in the trash for 30 days.`)) act(api.del(`/api/items/${item.id}`)) }}>
             🗑️ Delete {isSub ? 'sub-task' : 'item'}
           </button>
         </OverlayPopover>
